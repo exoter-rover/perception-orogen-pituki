@@ -1,0 +1,22 @@
+<package>
+  <description brief="Rock component for PCL Integration of TSDF Using Kinfu Implementation (PITUKI)">
+  Envire Plugin for PCL in order to create Large Scale mesh using the Truncated Signed Distance Function (TSDF) implemented in the Kinfu module
+  </description>
+  <author>Javier Hidalgo-Carrio/javier.hidalgo_carrio@dfki.de</author>
+  <author>Carlos Crespo/carlos.crespog@gmail.com</author>
+  <license>GPL v2 or later</license>
+  <url>http://rock-robotics.org</url>
+  <logo>http://</logo>
+  <depend package="base/cmake" />
+  <!--
+   To add any dependencies use the depend tag
+  <depend package="dummy-dependency-0" />
+	...
+  <depend package="dummy-dependency-n-1" />
+  <depend package="dummy-dependency-n" />
+  -->
+  <depend package="base/types" />
+  <depend package="base/orogen/types" />
+  <depend package="drivers/orogen/transformer" />
+  <depend package="slam/pcl" />
+</package>
