@@ -41,7 +41,7 @@ task_context "Task" do
     #******* Transformer  *********
     #******************************
     transformer do
-        transform "body", "world" # body to world in "Source in target" convention
+        transform "body", "navigation" # body to world in "Source in target" convention
         align_port("point_cloud_samples", 0.1)
         max_latency(0.2)
     end
@@ -52,5 +52,6 @@ task_context "Task" do
     output_port('point_cloud_samples_out', 'base/samples/Pointcloud').
 	doc 'Output point cloud.'
 
+    port_driven
 end
 

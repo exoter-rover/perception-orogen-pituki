@@ -23,8 +23,10 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     /** Get the transformation from the transformer **/
     Eigen::Affine3d tf;
 
+    std::cout<<"Received pituki point clouds\n";
+
     /** Get the transformation (transformation) Tbody_laser which transforms laser pints two body points **/
-    if(!_body2world.get( ts, tf ))
+    if(!_body2navigation.get( ts, tf ))
     {
         RTT::log(RTT::Warning)<<"[ EXOTER POINT CLOUD FATAL ERROR] No transformation provided for the transformer."<<RTT::endlog();
         return;
