@@ -10,8 +10,10 @@ import_types_from "pitukiTypes.hpp"
 # library's pkg-config name) and then the header can be used. Following Rock
 # conventions, a common use-case would be:
 using_library "pcl_registration-1.7"
+using_library "pcl_io-1.7"
+using_library "pcl_visualization-1.7"
 using_library "flann"
-
+using_library "cpu_tsdf"
 
 # If this project uses data types that are defined in other oroGen projects,
 # these projects should be imported there as well.
@@ -29,19 +31,24 @@ task_context "Task" do
     #*************************
     #**** Task Properties ****
     #*************************
+    property('sensor_point_cloud_height', 'int').
+	doc 'PCL Point clouds needs to be organized. It will take this property to organize them.'
+
+    property('sensor_point_cloud_width', 'int').
+	doc 'PCL Point clouds needs to be organized. It will take this property to organize them.'
 
     #******************************
     #******* Input ports  *********
     #******************************
     input_port('point_cloud_samples', 'base/samples/Pointcloud').
-	doc 'Point cloud samples (input).'
+	    doc 'Point cloud samples (input).'
 
 
     #******************************
     #******* Transformer  *********
     #******************************
     transformer do
-        transform "body", "navigation" # body to world in "Source in target" convention
+        transform "body", "navigation" # body in navigation in "Source in target" convention
         align_port("point_cloud_samples", 0.1)
         max_latency(0.2)
     end
@@ -50,7 +57,7 @@ task_context "Task" do
     #******* Output Ports *********
     #******************************
     output_port('point_cloud_samples_out', 'base/samples/Pointcloud').
-	doc 'Output point cloud.'
+	    doc 'Output point cloud.'
 
     port_driven
 end

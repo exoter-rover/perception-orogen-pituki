@@ -3,9 +3,19 @@
 #ifndef PITUKI_TASK_TASK_HPP
 #define PITUKI_TASK_TASK_HPP
 
+/** CPU TSDF library **/
+#include <cpu_tsdf/tsdf_volume_octree.h>
+#include <cpu_tsdf/marching_cubes_tsdf_octree.h>
+
+/** PCL **/
+#include <pcl/io/ply_io.h>
+
 #include "pituki/TaskBase.hpp"
 
 namespace pituki {
+
+    typedef pcl::PointCloud<pcl::PointXYZRGBA> PCLPointCloud;
+    typedef typename PCLPointCloud::Ptr PCLPointCloudPtr;
 
     /*! \class Task 
      * \brief The task context provides and requires services. It uses an ExecutionEngine to perform its functions.
@@ -29,7 +39,24 @@ tasks/Task.cpp, and will be put in the pituki namespace.
 	friend class TaskBase;
     protected:
 
+        /**************************/
+        /*** Property Variables ***/
+        /**************************/
+
+        /***************************/
+        /** Input port variables **/
+        /***************************/
+        PCLPointCloudPtr sensor_pointcloud;
+
+        /*******************************/
+        /** General Purpose variables **/
+        /*******************************/
+        cpu_tsdf::TSDFVolumeOctree::Ptr tsdf;
+
+    protected:
         virtual void point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample);
+
+    public:
 
     public:
         /** TaskContext constructor for Task
@@ -106,6 +133,17 @@ tasks/Task.cpp, and will be put in the pituki namespace.
          * before calling start() again.
          */
         void cleanupHook();
+
+        void toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointCloud< pcl::PointXYZRGBA >& pcl_pc, double density = 1.0);
+
+        void fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointCloud< pcl::PointXYZRGBNormal >& pcl_pc, double density = 1.0);
+
+        void transformPointCloud(const ::base::samples::Pointcloud & pc, ::base::samples::Pointcloud & transformed_pc, const Eigen::Affine3d& transformation);
+
+        void transformPointCloud(::base::samples::Pointcloud & pc, const Eigen::Affine3d& transformation);
+
+        void transformPointCloud(pcl::PointCloud<pcl::PointXYZRGBA> &pcl_pc, const Eigen::Affine3d& transformation);
+
     };
 }
 
