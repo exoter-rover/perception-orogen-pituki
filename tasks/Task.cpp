@@ -4,11 +4,53 @@
 
 using namespace pituki;
 
+#define DEBUG_PRINTS 1
+
+void writePlyFile( const base::samples::Pointcloud& points, const std::string& file )
+{
+    std::ofstream data( file.c_str() );
+
+    data << "ply" << "\n";
+    data << "format ascii 1.0\n";
+
+    data << "element vertex " << points.points.size() <<  "\n";
+    data << "property float x\n";
+    data << "property float y\n";
+    data << "property float z\n";
+
+    if( !points.colors.empty() )
+    {
+	data << "property uchar red\n";
+	data << "property uchar green\n";
+	data << "property uchar blue\n";
+	data << "property uchar alpha\n";
+    }
+    data << "end_header\n";
+
+    for( size_t i = 0; i < points.points.size(); i++ )
+    {
+	data 
+	    << points.points[i].x() << " "
+	    << points.points[i].y() << " "
+	    << points.points[i].z() << " ";
+	if( !points.colors.empty() )
+	{
+	    data 
+		<< (int)(points.colors[i].x()*255) << " "
+		<< (int)(points.colors[i].y()*255) << " "
+		<< (int)(points.colors[i].z()*255) << " "
+		<< (int)(points.colors[i].w()*255) << " ";
+	}
+	data << "\n";
+    }
+}
+
 Task::Task(std::string const& name)
     : TaskBase(name)
 {
     sensor_point_cloud.reset(new PCLPointCloud);
     merge_point_cloud.reset(new PCLPointCloud);
+    viewer.reset(new pcl::visualization::CloudViewer("Simple Cloud Viewer"));
 }
 
 Task::Task(std::string const& name, RTT::ExecutionEngine* engine)
@@ -54,29 +96,62 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     /** Integrate Fields **/
     *merge_point_cloud += *sensor_point_cloud;
 
+    #ifdef DEBUG_PRINTS
     std::cerr << "PointCloud before filtering: " << merge_point_cloud->width * merge_point_cloud->height
        << " data points (" << pcl::getFieldsList (*merge_point_cloud) << ").\n";
+    #endif
 
-    /** Convert to pcl 2 **/
-    PCLPointCloud2Ptr filtered_point_cloud(new PCLPointCloud2());
-    pcl::toPCLPointCloud2(*merge_point_cloud, *filtered_point_cloud);
+    if (idx++ > 200)
+    {
+        // Create the filtering object
+        pcl::VoxelGrid<PointType> sor;
+        sor.setInputCloud (merge_point_cloud);
+        sor.setLeafSize (0.01f, 0.01f, 0.1f);
+        sor.filter (*merge_point_cloud);
 
-    // Create the filtering object
-    pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
-    sor.setInputCloud (filtered_point_cloud);
-    sor.setLeafSize (0.03f, 0.03f, 0.03f);
-    sor.filter (*filtered_point_cloud);
+        #ifdef DEBUG_PRINTS
+        std::cerr << "PointCloud after filtering: " << merge_point_cloud->width * merge_point_cloud->height
+           << " data points (" << pcl::getFieldsList (*merge_point_cloud) << ").\n";
+        #endif
 
-    std::cerr << "PointCloud after filtering: " << filtered_point_cloud->width * filtered_point_cloud->height
-       << " data points (" << pcl::getFieldsList (*filtered_point_cloud) << ").\n";
+        /** Outlier filter in case of not NULL **/
+        if (outlierfilter_config.type == STATISTICAL)
+        {
 
-    /** Convert from pcl 2 **/
-    pcl::fromPCLPointCloud2(*filtered_point_cloud, *merge_point_cloud);
+            #ifdef DEBUG_PRINTS
+            std::cout<<"STATISTICAL FILTER\n";
+            #endif
+            PCLPointCloud filtered_cloud;
+            filtered_cloud.width = merge_point_cloud->width;
+            filtered_cloud.height = merge_point_cloud->height;
+            sor.setInputCloud(merge_point_cloud);
+            sor.filter (filtered_cloud);
+            merge_point_cloud = boost::make_shared<PCLPointCloud>(filtered_cloud);
+        }
+        else if (outlierfilter_config.type == RADIUS)
+        {
+            #ifdef DEBUG_PRINTS
+            std::cout<<"RADIUS FILTER\n";
+            #endif
+            PCLPointCloud filtered_cloud;
+            filtered_cloud.width = merge_point_cloud->width;
+            filtered_cloud.height = merge_point_cloud->height;
+            //ror.setInputCloud(merge_point_cloud);
+            //ror.filter (filtered_cloud);
+            //merge_point_cloud = boost::make_shared<PCLPointCloud>(filtered_cloud);
+        }
 
+        // Detect Features
+
+        // Detect Keypoints
+
+        idx = 0;
+    }
 
     /** Write the point cloud into the port **/
     ::base::samples::Pointcloud point_cloud_out;
     this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
+    std::cerr<< "Base PointcCloud size: "<<point_cloud_out.points.size()<<"\n";
     point_cloud_out.time = point_cloud_samples_sample.time;
     _point_cloud_samples_out.write(point_cloud_out);
 
@@ -90,6 +165,22 @@ bool Task::configureHook()
 {
     if (! TaskBase::configureHook())
         return false;
+
+    //viewer->showCloud (merge_point_cloud);
+
+    this->idx=0;
+
+    /** Configure Outlier filter **/
+    if (outlierfilter_config.type == pituki::STATISTICAL)
+    {
+        sor.setMeanK(outlierfilter_config.parameter_one);
+        sor.setStddevMulThresh(outlierfilter_config.parameter_two);
+    }
+    else if (outlierfilter_config.type == pituki::RADIUS)
+    {
+        ror.setRadiusSearch(outlierfilter_config.parameter_one);
+        ror.setMinNeighborsInRadius(outlierfilter_config.parameter_two);
+    }
 
     return true;
 }
@@ -110,13 +201,18 @@ void Task::errorHook()
 void Task::stopHook()
 {
     TaskBase::stopHook();
+
+    ::base::samples::Pointcloud point_cloud_out;
+    this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
+
+	writePlyFile(point_cloud_out, _output_ply.value() );
 }
 void Task::cleanupHook()
 {
     TaskBase::cleanupHook();
 }
 
-void Task::toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointCloud< pcl::PointXYZRGBA >& pcl_pc, double density)
+void Task::toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointCloud< PointType >& pcl_pc, double density)
 {
     pcl_pc.clear();
     std::vector<bool> mask;
@@ -152,7 +248,7 @@ void Task::toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointClo
         {
             if (base::isnotnan<base::Point>(pc.points[i]))
             {
-                pcl::PointXYZRGBA pcl_point;
+                PointType pcl_point;
                 pcl_point.x = pc.points[i].x();
                 pcl_point.y = pc.points[i].y();
                 pcl_point.z = pc.points[i].z();
@@ -173,7 +269,7 @@ void Task::toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointClo
     pcl_pc.is_dense = true;
 }
 
-void Task::fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointCloud< pcl::PointXYZRGBA >& pcl_pc, double density)
+void Task::fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointCloud< PointType >& pcl_pc, double density)
 {
     std::vector<bool> mask;
     unsigned sample_count = (unsigned)(density * pcl_pc.size());
@@ -206,7 +302,7 @@ void Task::fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointC
     {
         if(mask[i])
         {
-            pcl::PointXYZRGBA const &pcl_point(pcl_pc.points[i]);
+            PointType const &pcl_point(pcl_pc.points[i]);
 
             /** Position **/
             pc.points.push_back(::base::Point(pcl_point.x, pcl_point.y, pcl_point.z));
@@ -238,15 +334,17 @@ void Task::transformPointCloud(::base::samples::Pointcloud & pc, const Eigen::Af
     }
 }
 
-void Task::transformPointCloud(pcl::PointCloud<pcl::PointXYZRGBA> &pcl_pc, const Eigen::Affine3d& transformation)
+void Task::transformPointCloud(pcl::PointCloud<PointType> &pcl_pc, const Eigen::Affine3d& transformation)
 {
-    for(std::vector< pcl::PointXYZRGBA, Eigen::aligned_allocator<pcl::PointXYZRGBA> >::iterator it = pcl_pc.begin(); it != pcl_pc.end(); it++)
+    for(std::vector< PointType, Eigen::aligned_allocator<PointType> >::iterator it = pcl_pc.begin(); it != pcl_pc.end(); it++)
     {
         Eigen::Vector3d point (it->x, it->y, it->z);
         point = transformation * point;
-        pcl::PointXYZRGBA pcl_point;
+        PointType pcl_point;
         pcl_point.x = point[0]; pcl_point.y = point[1]; pcl_point.z = point[2];
         *it = pcl_point;
     }
 }
+
+
 

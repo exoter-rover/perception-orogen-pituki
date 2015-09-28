@@ -20,4 +20,5 @@
   <depend package="drivers/orogen/transformer" />
   <depend package="slam/pcl" />
   <depend package="slam/cpu_tsdf" />
+  <depend package="vtk" />
 </package>

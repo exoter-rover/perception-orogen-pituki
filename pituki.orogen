@@ -5,15 +5,16 @@ name "pituki"
 # If new data types need to be defined, they have to be put in a separate C++
 # header, and this header will be loaded here
 import_types_from "pitukiTypes.hpp"
+
 # Finally, it is pretty common that headers are directly loaded from an external
 # library. In this case, the library must be first used (the name is the
 # library's pkg-config name) and then the header can be used. Following Rock
 # conventions, a common use-case would be:
 using_library "pcl_registration-1.7"
-using_library "pcl_io-1.7"
 using_library "pcl_visualization-1.7"
+using_library "pcl_filters-1.7"
+using_library "pcl_io-1.7"
 using_library "flann"
-using_library "cpu_tsdf"
 
 # If this project uses data types that are defined in other oroGen projects,
 # these projects should be imported there as well.
@@ -37,12 +38,17 @@ task_context "Task" do
     property('sensor_point_cloud_width', 'int').
 	doc 'PCL Point clouds needs to be organized. It will take this property to organize them.'
 
+    property("output_ply", "/std/string", "").
+	doc "resulting ply file"
+
+    property('outlierfilter_config', 'pituki/OutlierRemovalFilterConfiguration').
+	doc 'Configuration parameters for Radius Outlier Removal filter.'
+
     #******************************
     #******* Input ports  *********
     #******************************
     input_port('point_cloud_samples', 'base/samples/Pointcloud').
 	    doc 'Point cloud samples (input).'
-
 
     #******************************
     #******* Transformer  *********

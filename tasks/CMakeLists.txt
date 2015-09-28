@@ -1,10 +1,13 @@
 # Generated from orogen/lib/orogen/templates/tasks/CMakeLists.txt
 
+find_package(VTK)
+INCLUDE(${VTK_USE_FILE})
+
 include(pitukiTaskLib)
 ADD_LIBRARY(${PITUKI_TASKLIB_NAME} SHARED 
     ${PITUKI_TASKLIB_SOURCES})
 add_dependencies(${PITUKI_TASKLIB_NAME}
-    regen-typekit)
+    regen-typekit DEPS_CMAKE VTK)
 
 TARGET_LINK_LIBRARIES(${PITUKI_TASKLIB_NAME}
     ${OrocosRTT_LIBRARIES}

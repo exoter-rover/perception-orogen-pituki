@@ -6,15 +6,21 @@
 /** PCL **/
 #include <pcl/io/ply_io.h>
 #include <pcl/point_types.h>
-#include <pcl/filters/voxel_grid.h>
 #include <pcl/PCLPointCloud2.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/radius_outlier_removal.h>
+#include <pcl/filters/statistical_outlier_removal.h>
+
 #include <pcl/conversions.h>
+#include <pcl/visualization/cloud_viewer.h>
 
 #include "pituki/TaskBase.hpp"
 
 namespace pituki {
 
-    typedef pcl::PointCloud<pcl::PointXYZRGBA> PCLPointCloud;
+    typedef pcl::PointXYZRGB PointType;
+
+    typedef pcl::PointCloud<PointType> PCLPointCloud;
     typedef typename PCLPointCloud::Ptr PCLPointCloudPtr;
 
     typedef pcl::PCLPointCloud2 PCLPointCloud2;
@@ -26,8 +32,8 @@ namespace pituki {
      * In order to modify the interfaces you should (re)use oroGen and rely on the associated workflow.
      * Declare a new task context (i.e., a component)
 
-The corresponding C++ class can be edited in tasks/Task.hpp and
-tasks/Task.cpp, and will be put in the pituki namespace.
+    The corresponding C++ class can be edited in tasks/Task.hpp and
+    tasks/Task.cpp, and will be put in the pituki namespace.
      * \details
      * The name of a TaskContext is primarily defined via:
      \verbatim
@@ -45,16 +51,22 @@ tasks/Task.cpp, and will be put in the pituki namespace.
         /**************************/
         /*** Property Variables ***/
         /**************************/
+        pituki::OutlierRemovalFilterConfiguration outlierfilter_config; /** Outlier Filter Removal Configuration **/
 
         /***************************/
         /** Input port variables **/
         /***************************/
+        pcl::StatisticalOutlierRemoval<PCLPointCloud> sor;
+        pcl::RadiusOutlierRemoval<PCLPointCloud> ror;
+
         PCLPointCloudPtr sensor_point_cloud;
 
         /*******************************/
         /** General Purpose variables **/
         /*******************************/
+        unsigned int idx;
         PCLPointCloudPtr merge_point_cloud;
+        boost::shared_ptr <pcl::visualization::CloudViewer> viewer;
 
     protected:
         virtual void point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample);
@@ -137,15 +149,15 @@ tasks/Task.cpp, and will be put in the pituki namespace.
          */
         void cleanupHook();
 
-        void toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointCloud< pcl::PointXYZRGBA >& pcl_pc, double density = 1.0);
+        void toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointCloud< PointType >& pcl_pc, double density = 1.0);
 
-        void fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointCloud< pcl::PointXYZRGBA >& pcl_pc, double density = 1.0);
+        void fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointCloud< PointType >& pcl_pc, double density = 1.0);
 
         void transformPointCloud(const ::base::samples::Pointcloud & pc, ::base::samples::Pointcloud & transformed_pc, const Eigen::Affine3d& transformation);
 
         void transformPointCloud(::base::samples::Pointcloud & pc, const Eigen::Affine3d& transformation);
 
-        void transformPointCloud(pcl::PointCloud<pcl::PointXYZRGBA> &pcl_pc, const Eigen::Affine3d& transformation);
+        void transformPointCloud(pcl::PointCloud<PointType> &pcl_pc, const Eigen::Affine3d& transformation);
 
     };
 }
