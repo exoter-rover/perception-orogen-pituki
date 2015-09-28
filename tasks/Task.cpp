@@ -1,10 +1,29 @@
 /* Generated from orogen/lib/orogen/templates/tasks/Task.cpp */
 
 #include "Task.hpp"
+#include <fstream>
 
 using namespace pituki;
 
 #define DEBUG_PRINTS 1
+
+Task::Task(std::string const& name)
+    : TaskBase(name)
+{
+    sensor_point_cloud.reset(new PCLPointCloud);
+    merge_point_cloud.reset(new PCLPointCloud);
+}
+
+Task::Task(std::string const& name, RTT::ExecutionEngine* engine)
+    : TaskBase(name, engine)
+{
+}
+
+Task::~Task()
+{
+    sensor_point_cloud.reset();
+    merge_point_cloud.reset();
+}
 
 void writePlyFile( const base::samples::Pointcloud& points, const std::string& file )
 {
@@ -45,23 +64,6 @@ void writePlyFile( const base::samples::Pointcloud& points, const std::string& f
     }
 }
 
-Task::Task(std::string const& name)
-    : TaskBase(name)
-{
-    sensor_point_cloud.reset(new PCLPointCloud);
-    merge_point_cloud.reset(new PCLPointCloud);
-    viewer.reset(new pcl::visualization::CloudViewer("Simple Cloud Viewer"));
-}
-
-Task::Task(std::string const& name, RTT::ExecutionEngine* engine)
-    : TaskBase(name, engine)
-{
-}
-
-Task::~Task()
-{
-    sensor_point_cloud.reset();
-}
 
 void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample)
 {
@@ -136,9 +138,9 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
             PCLPointCloud filtered_cloud;
             filtered_cloud.width = merge_point_cloud->width;
             filtered_cloud.height = merge_point_cloud->height;
-            //ror.setInputCloud(merge_point_cloud);
-            //ror.filter (filtered_cloud);
-            //merge_point_cloud = boost::make_shared<PCLPointCloud>(filtered_cloud);
+            ror.setInputCloud(merge_point_cloud);
+            ror.filter (filtered_cloud);
+            merge_point_cloud = boost::make_shared<PCLPointCloud>(filtered_cloud);
         }
 
         // Detect Features
@@ -165,8 +167,6 @@ bool Task::configureHook()
 {
     if (! TaskBase::configureHook())
         return false;
-
-    //viewer->showCloud (merge_point_cloud);
 
     this->idx=0;
 
@@ -346,5 +346,35 @@ void Task::transformPointCloud(pcl::PointCloud<PointType> &pcl_pc, const Eigen::
     }
 }
 
+
+void Task::compute_PFH_features (PCLPointCloud::Ptr &points,
+                      pcl::PointCloud<pcl::Normal>::Ptr &normals,
+                      float feature_radius,
+                      pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out)
+{
+    return;
+}
+
+void Task::detect_keypoints (PCLPointCloud::Ptr &points,
+          float min_scale, int nr_octaves, int nr_scales_per_octave, float min_contrast,
+          pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints_out)
+{
+    return;
+}
+
+void Task::compute_PFH_features_at_keypoints (PCLPointCloud::Ptr &points,
+                           pcl::PointCloud<pcl::Normal>::Ptr &normals,
+                           pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints, float feature_radius,
+                           pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out)
+{
+    return;
+}
+
+void Task::find_feature_correspondences (pcl::PointCloud<pcl::PFHSignature125>::Ptr &source_descriptors,
+                      pcl::PointCloud<pcl::PFHSignature125>::Ptr &target_descriptors,
+                      std::vector<int> &correspondences_out, std::vector<float> &correspondence_scores_out)
+{
+    return;
+}
 
 

@@ -4,15 +4,14 @@
 #define PITUKI_TASK_TASK_HPP
 
 /** PCL **/
-#include <pcl/io/ply_io.h>
 #include <pcl/point_types.h>
-#include <pcl/PCLPointCloud2.h>
+#include <pcl/point_cloud.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/statistical_outlier_removal.h>
-
-#include <pcl/conversions.h>
-#include <pcl/visualization/cloud_viewer.h>
+#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/features/pfh.h>
+#include <pcl/keypoints/sift_keypoint.h>
 
 #include "pituki/TaskBase.hpp"
 
@@ -22,9 +21,6 @@ namespace pituki {
 
     typedef pcl::PointCloud<PointType> PCLPointCloud;
     typedef typename PCLPointCloud::Ptr PCLPointCloudPtr;
-
-    typedef pcl::PCLPointCloud2 PCLPointCloud2;
-    typedef typename PCLPointCloud2::Ptr PCLPointCloud2Ptr;
 
     /*! \class Task 
      * \brief The task context provides and requires services. It uses an ExecutionEngine to perform its functions.
@@ -56,9 +52,6 @@ namespace pituki {
         /***************************/
         /** Input port variables **/
         /***************************/
-        pcl::StatisticalOutlierRemoval<PCLPointCloud> sor;
-        pcl::RadiusOutlierRemoval<PCLPointCloud> ror;
-
         PCLPointCloudPtr sensor_point_cloud;
 
         /*******************************/
@@ -66,7 +59,8 @@ namespace pituki {
         /*******************************/
         unsigned int idx;
         PCLPointCloudPtr merge_point_cloud;
-        boost::shared_ptr <pcl::visualization::CloudViewer> viewer;
+        pcl::StatisticalOutlierRemoval<PointType> sor;
+        pcl::RadiusOutlierRemoval<PointType> ror;
 
     protected:
         virtual void point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample);
@@ -157,7 +151,25 @@ namespace pituki {
 
         void transformPointCloud(::base::samples::Pointcloud & pc, const Eigen::Affine3d& transformation);
 
-        void transformPointCloud(pcl::PointCloud<PointType> &pcl_pc, const Eigen::Affine3d& transformation);
+        void transformPointCloud(PCLPointCloud &pcl_pc, const Eigen::Affine3d& transformation);
+
+        void compute_PFH_features (PCLPointCloud::Ptr &points,
+                      pcl::PointCloud<pcl::Normal>::Ptr &normals,
+                      float feature_radius,
+                      pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out);
+
+        void detect_keypoints (PCLPointCloud::Ptr &points,
+                  float min_scale, int nr_octaves, int nr_scales_per_octave, float min_contrast,
+                  pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints_out);
+
+        void compute_PFH_features_at_keypoints (PCLPointCloud::Ptr &points,
+                                   pcl::PointCloud<pcl::Normal>::Ptr &normals,
+                                   pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints, float feature_radius,
+                                   pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out);
+
+        void find_feature_correspondences (pcl::PointCloud<pcl::PFHSignature125>::Ptr &source_descriptors,
+                              pcl::PointCloud<pcl::PFHSignature125>::Ptr &target_descriptors,
+                              std::vector<int> &correspondences_out, std::vector<float> &correspondence_scores_out);
 
     };
 }
