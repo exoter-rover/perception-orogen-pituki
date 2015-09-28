@@ -7,7 +7,8 @@ using namespace pituki;
 Task::Task(std::string const& name)
     : TaskBase(name)
 {
-    sensor_pointcloud.reset(new PCLPointCloud);
+    sensor_point_cloud.reset(new PCLPointCloud);
+    merge_point_cloud.reset(new PCLPointCloud);
 }
 
 Task::Task(std::string const& name, RTT::ExecutionEngine* engine)
@@ -17,7 +18,7 @@ Task::Task(std::string const& name, RTT::ExecutionEngine* engine)
 
 Task::~Task()
 {
-    sensor_pointcloud.reset();
+    sensor_point_cloud.reset();
 }
 
 void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample)
@@ -34,39 +35,51 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
         return;
     }
 
+    /** Transform the point cloud in navigation frame **/
+    ::base::samples::Pointcloud point_cloud_in;
+    point_cloud_in = point_cloud_samples_sample;
+    register int k = 0;
+    for (std::vector<base::Point>::const_iterator it = point_cloud_samples_sample.points.begin();
+        it != point_cloud_samples_sample.points.end(); it++)
+    {
+        point_cloud_in.points[k] = tf * (*it);
+        k++;
+    }
 
     /** Convert to pcl point clouds **/
-    this->toPCLPointCloud(point_cloud_samples_sample, *sensor_pointcloud.get());
-    sensor_pointcloud->height = static_cast<int>(_sensor_point_cloud_height.value());
-    sensor_pointcloud->width = static_cast<int>(_sensor_point_cloud_width.value());
+    this->toPCLPointCloud(point_cloud_in, *sensor_point_cloud.get());
+    sensor_point_cloud->height = static_cast<int>(_sensor_point_cloud_height.value());
+    sensor_point_cloud->width = static_cast<int>(_sensor_point_cloud_width.value());
 
-    /**Integrate **/
-    this->tsdf->integrateCloud (*sensor_pointcloud, pcl::PointCloud<pcl::Normal>(),  Eigen::Affine3d::Identity());
+    /** Integrate Fields **/
+    *merge_point_cloud += *sensor_point_cloud;
 
-    std::vector<Eigen::Vector3i> indices;
-    this->tsdf->getOccupiedVoxelIndices(indices);
+    std::cerr << "PointCloud before filtering: " << merge_point_cloud->width * merge_point_cloud->height
+       << " data points (" << pcl::getFieldsList (*merge_point_cloud) << ").\n";
 
-    std::cout<<"indices.size(): "<<indices.size()<<"\n";
+    /** Convert to pcl 2 **/
+    PCLPointCloud2Ptr filtered_point_cloud(new PCLPointCloud2());
+    pcl::toPCLPointCloud2(*merge_point_cloud, *filtered_point_cloud);
 
-    /** Transform the point cloud in body frame **/
-//    pointcloud.time = point_cloud_samples_sample.time;
-//    pointcloud.points.resize(point_cloud_samples_sample.points.size());
-//    pointcloud.colors = point_cloud_samples_sample.colors;
-//    register int k = 0;
-//    for (std::vector<base::Point>::const_iterator it = point_cloud_samples_sample.points.begin();
-//        it != point_cloud_samples_sample.points.end(); it++)
-//    {
-//        pointcloud.points[k] = tf * (*it);
-//        k++;
-//    }
+    // Create the filtering object
+    pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
+    sor.setInputCloud (filtered_point_cloud);
+    sor.setLeafSize (0.03f, 0.03f, 0.03f);
+    sor.filter (*filtered_point_cloud);
+
+    std::cerr << "PointCloud after filtering: " << filtered_point_cloud->width * filtered_point_cloud->height
+       << " data points (" << pcl::getFieldsList (*filtered_point_cloud) << ").\n";
+
+    /** Convert from pcl 2 **/
+    pcl::fromPCLPointCloud2(*filtered_point_cloud, *merge_point_cloud);
+
 
     /** Write the point cloud into the port **/
-    ::base::samples::Pointcloud output_pc;
-    //this->fromPCLPointCloud(output_pc, *sensor_pointcloud.get());
-    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr raytraced = this->tsdf->renderColoredView (); // Optionally can render it
-    this->fromPCLPointCloud(output_pc, *raytraced.get());
-    output_pc.time = point_cloud_samples_sample.time;
-    _point_cloud_samples_out.write(output_pc);
+    ::base::samples::Pointcloud point_cloud_out;
+    this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
+    point_cloud_out.time = point_cloud_samples_sample.time;
+    _point_cloud_samples_out.write(point_cloud_out);
+
 }
 
 /// The following lines are template definitions for the various state machine
@@ -77,13 +90,6 @@ bool Task::configureHook()
 {
     if (! TaskBase::configureHook())
         return false;
-
-    /** Initialize TSDF Volume **/
-    this->tsdf.reset(new cpu_tsdf::TSDFVolumeOctree());
-    this->tsdf->setGridSize (10., 10., 10.); // 10m x 10m x 10m
-    this->tsdf->setResolution (2048, 2048, 2048); // Smallest cell size = 10m / 2048 = about half a centimeter
-    this->tsdf->setIntegrateColor (true); // Set to true if you want the TSDF to store color
-    this->tsdf->reset();// initialize volume
 
     return true;
 }
@@ -104,19 +110,6 @@ void Task::errorHook()
 void Task::stopHook()
 {
     TaskBase::stopHook();
-
-    /** Save the mesh into a file **/
-    cpu_tsdf::MarchingCubesTSDFOctree mc;
-    mc.setInputTSDF (this->tsdf);
-    //mc.setMinWeight (10);
-    mc.setColorByRGB (true);
-    pcl::PolygonMesh mesh;
-    mc.reconstruct (mesh);
-    pcl::io::savePLYFileBinary ("./mesh.ply", mesh);
-
-    this->tsdf->save("./tsdf_volume.vol");
-
-    std::cout<<"[STOP] SAVED MESH INTO FILE\n";
 }
 void Task::cleanupHook()
 {
@@ -180,7 +173,7 @@ void Task::toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointClo
     pcl_pc.is_dense = true;
 }
 
-void Task::fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointCloud< pcl::PointXYZRGBNormal >& pcl_pc, double density)
+void Task::fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointCloud< pcl::PointXYZRGBA >& pcl_pc, double density)
 {
     std::vector<bool> mask;
     unsigned sample_count = (unsigned)(density * pcl_pc.size());
@@ -213,7 +206,7 @@ void Task::fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointC
     {
         if(mask[i])
         {
-            pcl::PointXYZRGBNormal const &pcl_point(pcl_pc.points[i]);
+            pcl::PointXYZRGBA const &pcl_point(pcl_pc.points[i]);
 
             /** Position **/
             pc.points.push_back(::base::Point(pcl_point.x, pcl_point.y, pcl_point.z));

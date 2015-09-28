@@ -3,12 +3,12 @@
 #ifndef PITUKI_TASK_TASK_HPP
 #define PITUKI_TASK_TASK_HPP
 
-/** CPU TSDF library **/
-#include <cpu_tsdf/tsdf_volume_octree.h>
-#include <cpu_tsdf/marching_cubes_tsdf_octree.h>
-
 /** PCL **/
 #include <pcl/io/ply_io.h>
+#include <pcl/point_types.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/PCLPointCloud2.h>
+#include <pcl/conversions.h>
 
 #include "pituki/TaskBase.hpp"
 
@@ -16,6 +16,9 @@ namespace pituki {
 
     typedef pcl::PointCloud<pcl::PointXYZRGBA> PCLPointCloud;
     typedef typename PCLPointCloud::Ptr PCLPointCloudPtr;
+
+    typedef pcl::PCLPointCloud2 PCLPointCloud2;
+    typedef typename PCLPointCloud2::Ptr PCLPointCloud2Ptr;
 
     /*! \class Task 
      * \brief The task context provides and requires services. It uses an ExecutionEngine to perform its functions.
@@ -46,12 +49,12 @@ tasks/Task.cpp, and will be put in the pituki namespace.
         /***************************/
         /** Input port variables **/
         /***************************/
-        PCLPointCloudPtr sensor_pointcloud;
+        PCLPointCloudPtr sensor_point_cloud;
 
         /*******************************/
         /** General Purpose variables **/
         /*******************************/
-        cpu_tsdf::TSDFVolumeOctree::Ptr tsdf;
+        PCLPointCloudPtr merge_point_cloud;
 
     protected:
         virtual void point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample);
@@ -136,7 +139,7 @@ tasks/Task.cpp, and will be put in the pituki namespace.
 
         void toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointCloud< pcl::PointXYZRGBA >& pcl_pc, double density = 1.0);
 
-        void fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointCloud< pcl::PointXYZRGBNormal >& pcl_pc, double density = 1.0);
+        void fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointCloud< pcl::PointXYZRGBA >& pcl_pc, double density = 1.0);
 
         void transformPointCloud(const ::base::samples::Pointcloud & pc, ::base::samples::Pointcloud & transformed_pc, const Eigen::Affine3d& transformation);
 
