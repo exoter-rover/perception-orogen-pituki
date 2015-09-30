@@ -6,7 +6,9 @@
 /** PCL **/
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
+#include <pcl/features/normal_3d.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/fast_bilateral_omp.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/kdtree/kdtree_flann.h>
@@ -47,6 +49,7 @@ namespace pituki {
         /**************************/
         /*** Property Variables ***/
         /**************************/
+        pituki::BilateralFilterConfiguration bfilter_config; /** Bilateral filter Configuration **/
         pituki::OutlierRemovalFilterConfiguration outlierfilter_config; /** Outlier Filter Removal Configuration **/
 
         /***************************/
@@ -59,8 +62,6 @@ namespace pituki {
         /*******************************/
         unsigned int idx;
         PCLPointCloudPtr merge_point_cloud;
-        pcl::StatisticalOutlierRemoval<PointType> sor;
-        pcl::RadiusOutlierRemoval<PointType> ror;
 
     protected:
         virtual void point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample);
@@ -153,21 +154,29 @@ namespace pituki {
 
         void transformPointCloud(PCLPointCloud &pcl_pc, const Eigen::Affine3d& transformation);
 
-        void compute_PFH_features (PCLPointCloud::Ptr &points,
+        void downsample(PCLPointCloudPtr &points, float leaf_size, PCLPointCloudPtr &downsampled_out);
+
+        void compute_surface_normals (PCLPointCloudPtr &points, float normal_radius,  pcl::PointCloud<pcl::Normal>::Ptr &normals_out);
+
+        void bilateral_filter(PCLPointCloudPtr &points, const pituki::BilateralFilterConfiguration &config, PCLPointCloudPtr &filtered_out);
+
+        void outlierRemoval(PCLPointCloudPtr &points, const pituki::OutlierRemovalFilterConfiguration &config, PCLPointCloudPtr &outliersampled_out);
+
+        void compute_PFH_features(PCLPointCloud::Ptr &points,
                       pcl::PointCloud<pcl::Normal>::Ptr &normals,
                       float feature_radius,
                       pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out);
 
-        void detect_keypoints (PCLPointCloud::Ptr &points,
+        void detect_keypoints(PCLPointCloud::Ptr &points,
                   float min_scale, int nr_octaves, int nr_scales_per_octave, float min_contrast,
                   pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints_out);
 
-        void compute_PFH_features_at_keypoints (PCLPointCloud::Ptr &points,
+        void compute_PFH_features_at_keypoints(PCLPointCloud::Ptr &points,
                                    pcl::PointCloud<pcl::Normal>::Ptr &normals,
                                    pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints, float feature_radius,
                                    pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out);
 
-        void find_feature_correspondences (pcl::PointCloud<pcl::PFHSignature125>::Ptr &source_descriptors,
+        void find_feature_correspondences(pcl::PointCloud<pcl::PFHSignature125>::Ptr &source_descriptors,
                               pcl::PointCloud<pcl::PFHSignature125>::Ptr &target_descriptors,
                               std::vector<int> &correspondences_out, std::vector<float> &correspondence_scores_out);
 

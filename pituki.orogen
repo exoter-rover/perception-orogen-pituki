@@ -37,6 +37,9 @@ task_context "Task" do
     property("output_ply", "/std/string", "").
 	doc "resulting ply file"
 
+    property('bfilter_config', 'pituki/BilateralFilterConfiguration').
+	doc 'Configuration parameters for Bilateral filter.'
+
     property('outlierfilter_config', 'pituki/OutlierRemovalFilterConfiguration').
 	doc 'Configuration parameters for Radius Outlier Removal filter.'
 

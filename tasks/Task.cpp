@@ -95,57 +95,67 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     sensor_point_cloud->height = static_cast<int>(_sensor_point_cloud_height.value());
     sensor_point_cloud->width = static_cast<int>(_sensor_point_cloud_width.value());
 
+    /** Bilateral filter **/
+    this->bilateral_filter(sensor_point_cloud, bfilter_config, sensor_point_cloud);
+
+    #ifdef DEBUG_PRINTS
+    std::cerr<<"Finished Bilateral Filter\n";
+    #endif
+
     /** Integrate Fields **/
     *merge_point_cloud += *sensor_point_cloud;
 
-    #ifdef DEBUG_PRINTS
-    std::cerr << "PointCloud before filtering: " << merge_point_cloud->width * merge_point_cloud->height
-       << " data points (" << pcl::getFieldsList (*merge_point_cloud) << ").\n";
-    #endif
-
-    if (idx++ > 200)
+    if (idx++ > 50)
     {
-        // Create the filtering object
-        pcl::VoxelGrid<PointType> sor;
-        sor.setInputCloud (merge_point_cloud);
-        sor.setLeafSize (0.01f, 0.01f, 0.1f);
-        sor.filter (*merge_point_cloud);
+        /** Outlier filter removal **/
+        this->outlierRemoval(merge_point_cloud, outlierfilter_config, merge_point_cloud);
+
+        #ifdef DEBUG_PRINTS
+        std::cerr<<"Removed Outliers\n";
+        #endif
+
+        #ifdef DEBUG_PRINTS
+        std::cerr << "PointCloud before filtering: " << merge_point_cloud->width * merge_point_cloud->height
+           << " data points (" << pcl::getFieldsList (*merge_point_cloud) << ").\n";
+        #endif
+
+        /** Downsample the cloud **/
+        this->downsample(merge_point_cloud, 0.02f, merge_point_cloud);
 
         #ifdef DEBUG_PRINTS
         std::cerr << "PointCloud after filtering: " << merge_point_cloud->width * merge_point_cloud->height
            << " data points (" << pcl::getFieldsList (*merge_point_cloud) << ").\n";
         #endif
 
-        /** Outlier filter in case of not NULL **/
-        if (outlierfilter_config.type == STATISTICAL)
-        {
+        /** Compute surface normals **/
+        const float normal_radius = 0.03;
+        pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
+        this->compute_surface_normals (merge_point_cloud, normal_radius, normals);
 
-            #ifdef DEBUG_PRINTS
-            std::cout<<"STATISTICAL FILTER\n";
-            #endif
-            PCLPointCloud filtered_cloud;
-            filtered_cloud.width = merge_point_cloud->width;
-            filtered_cloud.height = merge_point_cloud->height;
-            sor.setInputCloud(merge_point_cloud);
-            sor.filter (filtered_cloud);
-            merge_point_cloud = boost::make_shared<PCLPointCloud>(filtered_cloud);
-        }
-        else if (outlierfilter_config.type == RADIUS)
-        {
-            #ifdef DEBUG_PRINTS
-            std::cout<<"RADIUS FILTER\n";
-            #endif
-            PCLPointCloud filtered_cloud;
-            filtered_cloud.width = merge_point_cloud->width;
-            filtered_cloud.height = merge_point_cloud->height;
-            ror.setInputCloud(merge_point_cloud);
-            ror.filter (filtered_cloud);
-            merge_point_cloud = boost::make_shared<PCLPointCloud>(filtered_cloud);
-        }
+        #ifdef DEBUG_PRINTS
+        std::cerr<<"Computed Surface normals\n";
+        #endif
 
-        // Detect Features
+        /** Compute  Keypoints **/
+        const float min_scale = 0.01;
+        const int nr_octaves = 3;
+        const int nr_octaves_per_scale = 3;
+        const float min_contrast = 10.0;
+        pcl::PointCloud<pcl::PointWithScale>::Ptr keypoints (new pcl::PointCloud<pcl::PointWithScale>);
+        this->detect_keypoints (merge_point_cloud, min_scale, nr_octaves, nr_octaves_per_scale, min_contrast, keypoints);
 
-        // Detect Keypoints
+        #ifdef DEBUG_PRINTS
+        std::cerr<<"Computedkeypoints\n";
+        #endif
+
+        /** Compute PFH features at the keypoints **/
+        const float feature_radius = 0.08;
+        pcl::PointCloud<pcl::PFHSignature125>::Ptr descriptors (new pcl::PointCloud<pcl::PFHSignature125>);
+        this->compute_PFH_features_at_keypoints (merge_point_cloud, normals, keypoints, feature_radius, descriptors);
+
+        #ifdef DEBUG_PRINTS
+        std::cerr<<"Computedkeypoints\n";
+        #endif
 
         idx = 0;
     }
@@ -153,7 +163,7 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     /** Write the point cloud into the port **/
     ::base::samples::Pointcloud point_cloud_out;
     this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
-    std::cerr<< "Base PointcCloud size: "<<point_cloud_out.points.size()<<"\n";
+    std::cerr<< "Base PointCloud size: "<<point_cloud_out.points.size()<<"\n";
     point_cloud_out.time = point_cloud_samples_sample.time;
     _point_cloud_samples_out.write(point_cloud_out);
 
@@ -170,17 +180,8 @@ bool Task::configureHook()
 
     this->idx=0;
 
-    /** Configure Outlier filter **/
-    if (outlierfilter_config.type == pituki::STATISTICAL)
-    {
-        sor.setMeanK(outlierfilter_config.parameter_one);
-        sor.setStddevMulThresh(outlierfilter_config.parameter_two);
-    }
-    else if (outlierfilter_config.type == pituki::RADIUS)
-    {
-        ror.setRadiusSearch(outlierfilter_config.parameter_one);
-        ror.setMinNeighborsInRadius(outlierfilter_config.parameter_two);
-    }
+    this->bfilter_config = _bfilter_config.get();
+    this->outlierfilter_config = _outlierfilter_config.get();
 
     return true;
 }
@@ -346,12 +347,109 @@ void Task::transformPointCloud(pcl::PointCloud<PointType> &pcl_pc, const Eigen::
     }
 }
 
+void Task::downsample (PCLPointCloudPtr &points, float leaf_size, PCLPointCloudPtr &downsampled_out)
+{
+
+  pcl::VoxelGrid<PointType> vox_grid;
+  vox_grid.setLeafSize (leaf_size, leaf_size, leaf_size);
+  vox_grid.setInputCloud (points);
+  vox_grid.filter (*downsampled_out);
+
+  return;
+}
+
+void Task::compute_surface_normals (PCLPointCloudPtr &points, float normal_radius,
+                         pcl::PointCloud<pcl::Normal>::Ptr &normals_out)
+{
+  pcl::NormalEstimation<PointType, pcl::Normal> norm_est;
+
+  // Use a FLANN-based KdTree to perform neighborhood searches
+  //norm_est.setSearchMethod (pcl::KdTreeFLANN<PointType>::Ptr (new pcl::KdTreeFLANN<PointType>));
+  norm_est.setSearchMethod (pcl::search::KdTree<PointType>::Ptr (new pcl::search::KdTree<PointType>));
+
+
+  // Specify the size of the local neighborhood to use when computing the surface normals
+  norm_est.setRadiusSearch (normal_radius);
+
+  // Set the input points
+  norm_est.setInputCloud (points);
+
+  // Estimate the surface normals and store the result in "normals_out"
+  norm_est.compute (*normals_out);
+}
+
+void Task::bilateral_filter(PCLPointCloudPtr &points, const pituki::BilateralFilterConfiguration &config, PCLPointCloudPtr &filtered_out)
+{
+    pcl::FastBilateralFilter<PointType> b_filter;
+
+    /** Configure Bilateral filter **/
+    b_filter.setSigmaS(config.spatial_width);
+    b_filter.setSigmaR(config.range_sigma);
+
+    b_filter.setInputCloud(points);
+    filtered_out->width = points->width;
+    filtered_out->height = points->height;
+    b_filter.filter(*filtered_out);
+}
+
+void Task::outlierRemoval(PCLPointCloudPtr &points, const pituki::OutlierRemovalFilterConfiguration &config, PCLPointCloudPtr &outliersampled_out)
+{
+    if (config.type == STATISTICAL)
+    {
+        pcl::StatisticalOutlierRemoval<PointType> sor;
+
+        sor.setMeanK(config.parameter_one);
+        sor.setStddevMulThresh(config.parameter_two);
+
+        #ifdef DEBUG_PRINTS
+        std::cout<<"STATISTICAL FILTER\n";
+        #endif
+        outliersampled_out->width = points->width;
+        outliersampled_out->height = points->height;
+        sor.setInputCloud(points);
+        sor.filter (*outliersampled_out);
+    }
+    else if (config.type == RADIUS)
+    {
+        pcl::RadiusOutlierRemoval<PointType> ror;
+
+        ror.setRadiusSearch(config.parameter_one);
+        ror.setMinNeighborsInRadius(config.parameter_two);
+
+        #ifdef DEBUG_PRINTS
+        std::cout<<"RADIUS FILTER\n";
+        #endif
+        PCLPointCloud filtered_cloud;
+        outliersampled_out->width = points->width;
+        outliersampled_out->height = points->height;
+        ror.setInputCloud(points);
+        ror.filter (*outliersampled_out);
+    }
+
+    return;
+}
 
 void Task::compute_PFH_features (PCLPointCloud::Ptr &points,
                       pcl::PointCloud<pcl::Normal>::Ptr &normals,
                       float feature_radius,
                       pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out)
 {
+    // Create a PFHEstimation object
+    pcl::PFHEstimation<PointType, pcl::Normal, pcl::PFHSignature125> pfh_est;
+
+    // Set it to use a FLANN-based KdTree to perform its neighborhood searches
+    pfh_est.setSearchMethod (pcl::search::KdTree<PointType>::Ptr (new pcl::search::KdTree<PointType>));
+
+    // Specify the radius of the PFH feature
+    pfh_est.setRadiusSearch (feature_radius);
+
+    // Set the input points and surface normals
+    pfh_est.setInputCloud (points);
+    pfh_est.setInputNormals (normals);
+
+    // Compute the features
+    pfh_est.compute (*descriptors_out);
+
     return;
 }
 
@@ -359,6 +457,21 @@ void Task::detect_keypoints (PCLPointCloud::Ptr &points,
           float min_scale, int nr_octaves, int nr_scales_per_octave, float min_contrast,
           pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints_out)
 {
+    pcl::SIFTKeypoint<PointType, pcl::PointWithScale> sift_detect;
+
+    // Use a FLANN-based KdTree to perform neighborhood searches
+    sift_detect.setSearchMethod (pcl::search::KdTree<PointType>::Ptr (new pcl::search::KdTree<PointType>));
+
+    // Set the detection parameters
+    sift_detect.setScales (min_scale, nr_octaves, nr_scales_per_octave);
+    sift_detect.setMinimumContrast (min_contrast);
+
+    // Set the input
+    sift_detect.setInputCloud (points);
+
+    // Detect the keypoints and store them in "keypoints_out"
+    sift_detect.compute (*keypoints_out);
+
     return;
 }
 
@@ -367,6 +480,35 @@ void Task::compute_PFH_features_at_keypoints (PCLPointCloud::Ptr &points,
                            pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints, float feature_radius,
                            pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out)
 {
+    // Create a PFHEstimation object
+    pcl::PFHEstimation<PointType, pcl::Normal, pcl::PFHSignature125> pfh_est;
+
+    // Set it to use a FLANN-based KdTree to perform its neighborhood searches
+    pfh_est.setSearchMethod (pcl::search::KdTree<PointType>::Ptr (new pcl::search::KdTree<PointType>));
+
+    // Specify the radius of the PFH feature
+    pfh_est.setRadiusSearch (feature_radius);
+
+    /* This is a little bit messy: since our keypoint detection returns PointWithScale points, but we want to
+    * use them as an input to our PFH estimation, which expects clouds of PointXYZRGBA points.  To get around this,
+    * we'll use copyPointCloud to convert "keypoints" (a cloud of type PointCloud<PointWithScale>) to
+    * "keypoints_xyzrgb" (a cloud of type PointCloud<PointXYZRGBA>).  Note that the original cloud doesn't have any RGB
+    * values, so when we copy from PointWithScale to PointXYZRGBA, the new r,g,b fields will all be zero.
+    */
+
+    PCLPointCloudPtr keypoints_xyzrgb (new pcl::PointCloud<PointType>);
+    pcl::copyPointCloud (*keypoints, *keypoints_xyzrgb);
+
+    // Use all of the points for analyzing the local structure of the cloud
+    pfh_est.setSearchSurface (points);
+    pfh_est.setInputNormals (normals);
+
+    // But only compute features at the keypoints
+    pfh_est.setInputCloud (keypoints_xyzrgb);
+
+    // Compute the features
+    pfh_est.compute (*descriptors_out);
+
     return;
 }
 
@@ -374,6 +516,26 @@ void Task::find_feature_correspondences (pcl::PointCloud<pcl::PFHSignature125>::
                       pcl::PointCloud<pcl::PFHSignature125>::Ptr &target_descriptors,
                       std::vector<int> &correspondences_out, std::vector<float> &correspondence_scores_out)
 {
+
+    // Resize the output vector
+    correspondences_out.resize (source_descriptors->size ());
+    correspondence_scores_out.resize (source_descriptors->size ());
+
+    // Use a KdTree to search for the nearest matches in feature space
+    pcl::search::KdTree<pcl::PFHSignature125> descriptor_kdtree;
+    descriptor_kdtree.setInputCloud (target_descriptors);
+
+    // Find the index of the best match for each keypoint, and store it in "correspondences_out"
+    const int k = 1;
+    std::vector<int> k_indices (k);
+    std::vector<float> k_squared_distances (k);
+    for (size_t i = 0; i < source_descriptors->size (); ++i)
+    {
+        descriptor_kdtree.nearestKSearch (*source_descriptors, i, k, k_indices, k_squared_distances);
+        correspondences_out[i] = k_indices[0];
+        correspondence_scores_out[i] = k_squared_distances[0];
+    }
+
     return;
 }
 

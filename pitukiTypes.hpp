@@ -17,6 +17,13 @@ namespace pituki {
         RADIUS
     };
 
+    struct BilateralFilterConfiguration
+    {
+        bool filterOn;
+        float spatial_width; //size of the window bilateral filter
+        float range_sigma; // the standard deviation of the Gaussian for the intensity difference
+    };
+
     struct OutlierRemovalFilterConfiguration
     {
         OutlierFilterType type;
