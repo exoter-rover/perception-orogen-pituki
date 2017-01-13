@@ -36,7 +36,7 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     #endif
 
     /** Get the transformation (transformation) **/
-    if(!_sensor2navigation.get( ts, tf ))
+    if(!_sensor2world.get( ts, tf ))
     {
         RTT::log(RTT::Warning)<<"[ PITUKI FATAL ERROR] No transformation provided for the transformer."<<RTT::endlog();
         return;
