@@ -8,6 +8,8 @@
  * which case you do not need this file
  */
 
+#include <base/Eigen.hpp>
+
 namespace pituki {
 
     enum OutlierFilterType
@@ -35,6 +37,17 @@ namespace pituki {
         //STATISTICAL: the standard deviation multiplier for the distance threshold calculation.(stddev_null)
         //RADIUS: number of neighbors that need to be present in order to be classified as an inlier(min_pts)
         float parameter_two;
+    };
+
+    struct TSDFConfiguration
+    {
+        base::Vector3d size;
+        base::Vector3d resolution;
+        bool integrate_color;
+
+        int mesh_min_weight;
+
+
     };
 }
 

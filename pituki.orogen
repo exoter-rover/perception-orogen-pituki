@@ -10,6 +10,7 @@ using_library "pcl_kdtree-1.7"
 using_library "pcl_features-1.7"
 using_library "pcl_keypoints-1.7"
 using_library "flann"
+using_library "cpu_tsdf"
 
 # If this project uses data types that are defined in other oroGen projects,
 # these projects should be imported there as well.
@@ -29,31 +30,34 @@ task_context "Task" do
     #**** Task Properties ****
     #*************************
     property('sensor_point_cloud_height', 'int').
-	doc 'PCL Point clouds needs to be organized. It will take this property to organize them.'
+        doc 'PCL Point clouds needs to be organized. It will take this property to organize them.'
 
     property('sensor_point_cloud_width', 'int').
-	doc 'PCL Point clouds needs to be organized. It will take this property to organize them.'
+        doc 'PCL Point clouds needs to be organized. It will take this property to organize them.'
 
     property("output_ply", "/std/string", "").
-	doc "resulting ply file"
+        doc "resulting ply file"
 
     property('bfilter_config', 'pituki/BilateralFilterConfiguration').
-	doc 'Configuration parameters for Bilateral filter.'
+        doc 'Configuration parameters for Bilateral filter.'
 
     property('outlierfilter_config', 'pituki/OutlierRemovalFilterConfiguration').
-	doc 'Configuration parameters for Radius Outlier Removal filter.'
+        doc 'Configuration parameters for Radius Outlier Removal filter.'
+
+    property('tsdf_config', 'pituki/TSDFConfiguration').
+        doc 'Configuration parameters for TSDF.'
 
     #******************************
     #******* Input ports  *********
     #******************************
     input_port('point_cloud_samples', 'base/samples/Pointcloud').
-	    doc 'Point cloud samples (input).'
+        doc 'Point cloud samples (input).'
 
     #******************************
     #******* Transformer  *********
     #******************************
     transformer do
-        transform "body", "navigation" # body in navigation in "Source in target" convention
+        transform "sensor", "navigation" # sensor in navigation in "Source in target" convention
         align_port("point_cloud_samples", 0.1)
         max_latency(0.2)
     end

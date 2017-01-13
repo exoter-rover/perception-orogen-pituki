@@ -15,6 +15,10 @@
 #include <pcl/features/pfh.h>
 #include <pcl/keypoints/sift_keypoint.h>
 
+/** CPU TSDF **/
+#include <cpu_tsdf/tsdf_volume_octree.h>
+#include <cpu_tsdf/marching_cubes_tsdf_octree.h>
+
 #include "pituki/TaskBase.hpp"
 
 namespace pituki {
@@ -51,6 +55,7 @@ namespace pituki {
         /**************************/
         pituki::BilateralFilterConfiguration bfilter_config; /** Bilateral filter Configuration **/
         pituki::OutlierRemovalFilterConfiguration outlierfilter_config; /** Outlier Filter Removal Configuration **/
+        pituki::TSDFConfiguration tsdf_config; /** TSDF Configuration **/
 
         /***************************/
         /** Input port variables **/
@@ -60,7 +65,10 @@ namespace pituki {
         /*******************************/
         /** General Purpose variables **/
         /*******************************/
-        unsigned int idx;
+
+        /** TSDF Volume **/
+        cpu_tsdf::TSDFVolumeOctree::Ptr tsdf;
+
         PCLPointCloudPtr merge_point_cloud;
 
     protected:
@@ -143,6 +151,8 @@ namespace pituki {
          * before calling start() again.
          */
         void cleanupHook();
+
+        void writePlyFile( const base::samples::Pointcloud& points, const std::string& file );
 
         void toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointCloud< PointType >& pcl_pc, double density = 1.0);
 

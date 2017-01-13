@@ -18,6 +18,6 @@
   <depend package="base/types" />
   <depend package="base/orogen/types" />
   <depend package="drivers/orogen/transformer" />
-  <depend package="slam/pcl" />
+  <depend package="perception/cpu_tsdf" />
   <depend package="vtk" />
 </package>
