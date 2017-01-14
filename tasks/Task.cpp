@@ -28,17 +28,17 @@ Task::~Task()
 
 void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample)
 {
-    /** Get the transformation from the transformer **/
-    Eigen::Affine3d tf;
-
     #ifdef DEBUG_PRINTS
     std::cout<<"[PITUKI] Received pituki point clouds\n";
     #endif
 
+    /** The transformation from the transformer **/
+    Eigen::Affine3d tf;
+
     /** Get the transformation (transformation) **/
     if(!_sensor2world.get( ts, tf ))
     {
-        RTT::log(RTT::Warning)<<"[ PITUKI FATAL ERROR] No transformation provided for the transformer."<<RTT::endlog();
+        RTT::log(RTT::Warning)<<"[PITUKI FATAL ERROR] No transformation provided for the transformer."<<RTT::endlog();
         return;
     }
 
@@ -56,78 +56,45 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     this->toPCLPointCloud(point_cloud_in, *sensor_point_cloud.get());
     sensor_point_cloud->height = static_cast<int>(_sensor_point_cloud_height.value());
     sensor_point_cloud->width = static_cast<int>(_sensor_point_cloud_width.value());
+    std::cout<<"sensor_point_cloud->width: "<< sensor_point_cloud->width<<"\n";
+    std::cout<<"sensor_point_cloud->height: "<< sensor_point_cloud->height<<"\n";
+    std::cout<<"sensor_point_cloud->size: "<< sensor_point_cloud->size()<<"\n";
+
+    /** Downsample the point cloud **/
+    //this->downsample(sensor_point_cloud, _downsample_size.value(), sensor_point_cloud);
+    //std::cout<<"sensor_point_cloud->width: "<< sensor_point_cloud->width<<"\n";
+    //std::cout<<"sensor_point_cloud->height: "<< sensor_point_cloud->height<<"\n";
+    //std::cout<<"sensor_point_cloud->size: "<< sensor_point_cloud->size()<<"\n";
+
+    //#ifdef DEBUG_PRINTS
+    //std::cout<<"[PITUKI] Finished Downsample\n";
+    //#endif
 
     /** Bilateral filter **/
-    this->bilateral_filter(sensor_point_cloud, bfilter_config, sensor_point_cloud);
+    //this->bilateral_filter(sensor_point_cloud, bfilter_config, sensor_point_cloud);
 
-    #ifdef DEBUG_PRINTS
-    std::cout<<"[PITUKI] Finished Bilateral Filter\n";
-    #endif
+    //#ifdef DEBUG_PRINTS
+    //std::cout<<"[PITUKI] Finished Bilateral Filter\n";
+    //#endif
 
-    /** Integrate Fields **/
-    *merge_point_cloud += *sensor_point_cloud;
+    /** Compute surface normals **/
+    //const float normal_radius = 0.1;
+    pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
+    //this->compute_surface_normals (sensor_point_cloud, normal_radius, normals);
 
-    if (idx++ > 50)
-    {
-        /** Outlier filter removal **/
-        this->outlierRemoval(merge_point_cloud, outlierfilter_config, merge_point_cloud);
+    //#ifdef DEBUG_PRINTS
+    //std::cout<<"[PITUKI] Computed Surface normals\n";
+    //#endif
 
-        #ifdef DEBUG_PRINTS
-        std::cout<<"[PITUKI] Removed Outliers\n";
-        #endif
-
-        #ifdef DEBUG_PRINTS
-        std::cout << "[PITUKI] PointCloud before filtering: " << merge_point_cloud->width * merge_point_cloud->height
-           << " data points (" << pcl::getFieldsList (*merge_point_cloud) << ").\n";
-        #endif
-
-        /** Downsample the cloud **/
-        this->downsample(merge_point_cloud, 0.02f, merge_point_cloud);
-
-        #ifdef DEBUG_PRINTS
-        std::cout << "[PITUKI] PointCloud after filtering: " << merge_point_cloud->width * merge_point_cloud->height
-           << " data points (" << pcl::getFieldsList (*merge_point_cloud) << ").\n";
-        #endif
-
-        /** Compute surface normals **/
-        const float normal_radius = 0.03;
-        pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
-        this->compute_surface_normals (merge_point_cloud, normal_radius, normals);
-
-        #ifdef DEBUG_PRINTS
-        std::cout<<"[PITUKI] Computed Surface normals\n";
-        #endif
-
-        /** Compute  Keypoints **/
-        const float min_scale = 0.01;
-        const int nr_octaves = 3;
-        const int nr_octaves_per_scale = 3;
-        const float min_contrast = 10.0;
-        pcl::PointCloud<pcl::PointWithScale>::Ptr keypoints (new pcl::PointCloud<pcl::PointWithScale>);
-        this->detect_keypoints (merge_point_cloud, min_scale, nr_octaves, nr_octaves_per_scale, min_contrast, keypoints);
-
-        #ifdef DEBUG_PRINTS
-        std::cout<<"[PITUKI] Computedkeypoints\n";
-        #endif
-
-        /** Compute PFH features at the keypoints **/
-        const float feature_radius = 0.08;
-        pcl::PointCloud<pcl::PFHSignature125>::Ptr descriptors (new pcl::PointCloud<pcl::PFHSignature125>);
-        this->compute_PFH_features_at_keypoints (merge_point_cloud, normals, keypoints, feature_radius, descriptors);
-
-        #ifdef DEBUG_PRINTS
-        std::cout<<"[PITUKI] Computedkeypoints\n";
-        #endif
-
-        idx = 0;
-    }
+    /** Integrate the point cloud into the tsdf Volume **/
+    this->tsdf->integrateCloud(*sensor_point_cloud, *normals, tf);
 
     /** Write the point cloud into the port **/
-    ::base::samples::Pointcloud point_cloud_out;
-    this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
-    std::cout<< "[PITUKI] Base PointCloud size: "<<point_cloud_out.points.size()<<"\n";
-    point_cloud_out.time = point_cloud_samples_sample.time;
-    _point_cloud_samples_out.write(point_cloud_out);
+    //::base::samples::Pointcloud point_cloud_out;
+    //this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
+    //std::cout<< "[PITUKI] Base PointCloud size: "<<point_cloud_out.points.size()<<"\n";
+    //point_cloud_out.time = point_cloud_samples_sample.time;
+    //_point_cloud_samples_out.write(point_cloud_out);
 
 }
 
@@ -177,11 +144,17 @@ void Task::stopHook()
 {
     TaskBase::stopHook();
 
-    ::base::samples::Pointcloud point_cloud_out;
-    this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
+    cpu_tsdf::MarchingCubesTSDFOctree mc;
+    mc.setMinWeight (this->tsdf_config.mesh_min_weight);
+    mc.setInputTSDF (this->tsdf);
+    mc.setColorByRGB(this->tsdf_config.integrate_color);
 
-    this->writePlyFile(point_cloud_out, _output_ply.value() );
+    pcl::PolygonMesh::Ptr mesh (new pcl::PolygonMesh);
+    mc.reconstruct (*mesh);
+
+    pcl::io::savePLYFileBinary (_output_ply.value(), *mesh);
 }
+
 void Task::cleanupHook()
 {
     TaskBase::cleanupHook();
@@ -261,27 +234,21 @@ void Task::toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointClo
     {
         if(mask[i])
         {
-            if (base::isnotnan<base::Point>(pc.points[i]))
-            {
-                PointType pcl_point;
-                pcl_point.x = pc.points[i].x();
-                pcl_point.y = pc.points[i].y();
-                pcl_point.z = pc.points[i].z();
-                uint8_t r = pc.colors[i].x()*255.00, g = pc.colors[i].y()*255.00, b = pc.colors[i].z()*255.00;
-                uint32_t rgb = ((uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b);
-                pcl_point.rgb = *reinterpret_cast<float*>(&rgb);
+            PointType pcl_point;
+            pcl_point.x = pc.points[i].x();
+            pcl_point.y = pc.points[i].y();
+            pcl_point.z = pc.points[i].z();
+            uint8_t r = pc.colors[i].x()*255.00, g = pc.colors[i].y()*255.00, b = pc.colors[i].z()*255.00;
+            uint32_t rgb = ((uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b);
+            pcl_point.rgb = *reinterpret_cast<float*>(&rgb);
 
-                if (rgb > 0.00)
-                {
-                    /** Point info **/
-                    pcl_pc.push_back(pcl_point);
-                }
-            }
+            /** Point info **/
+            pcl_pc.push_back(pcl_point);
         }
     }
 
     /** All data points are finite (no NaN or Infinite) **/
-    pcl_pc.is_dense = true;
+    pcl_pc.is_dense = false;
 }
 
 void Task::fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointCloud< PointType >& pcl_pc, double density)
@@ -401,8 +368,6 @@ void Task::bilateral_filter(PCLPointCloudPtr &points, const pituki::BilateralFil
     b_filter.setSigmaR(config.range_sigma);
 
     b_filter.setInputCloud(points);
-    filtered_out->width = points->width;
-    filtered_out->height = points->height;
     b_filter.filter(*filtered_out);
 }
 
@@ -552,5 +517,4 @@ void Task::find_feature_correspondences (pcl::PointCloud<pcl::PFHSignature125>::
 
     return;
 }
-
 

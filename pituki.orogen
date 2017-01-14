@@ -9,6 +9,7 @@ using_library "pcl_filters-1.7"
 using_library "pcl_kdtree-1.7"
 using_library "pcl_features-1.7"
 using_library "pcl_keypoints-1.7"
+using_library "pcl_io-1.7"
 using_library "flann"
 using_library "cpu_tsdf"
 
@@ -41,6 +42,9 @@ task_context "Task" do
     property('bfilter_config', 'pituki/BilateralFilterConfiguration').
         doc 'Configuration parameters for Bilateral filter.'
 
+    property('downsample_size', 'float').
+        doc 'Size for the downsample process of the point cloud'
+
     property('outlierfilter_config', 'pituki/OutlierRemovalFilterConfiguration').
         doc 'Configuration parameters for Radius Outlier Removal filter.'
 
@@ -66,7 +70,7 @@ task_context "Task" do
     #******* Output Ports *********
     #******************************
     output_port('point_cloud_samples_out', 'base/samples/Pointcloud').
-	    doc 'Output point cloud.'
+        doc 'Output point cloud.'
 
     port_driven
 end
