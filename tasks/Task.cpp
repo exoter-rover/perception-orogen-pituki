@@ -60,42 +60,40 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     std::cout<<"sensor_point_cloud->height: "<< sensor_point_cloud->height<<"\n";
     std::cout<<"sensor_point_cloud->size: "<< sensor_point_cloud->size()<<"\n";
 
-    /** Downsample the point cloud **/
-    //this->downsample(sensor_point_cloud, _downsample_size.value(), sensor_point_cloud);
-    //std::cout<<"sensor_point_cloud->width: "<< sensor_point_cloud->width<<"\n";
-    //std::cout<<"sensor_point_cloud->height: "<< sensor_point_cloud->height<<"\n";
-    //std::cout<<"sensor_point_cloud->size: "<< sensor_point_cloud->size()<<"\n";
-
-    //#ifdef DEBUG_PRINTS
-    //std::cout<<"[PITUKI] Finished Downsample\n";
-    //#endif
+    this->outlierRemoval(sensor_point_cloud, this->outlierfilter_config, sensor_point_cloud);
 
     /** Bilateral filter **/
-    //this->bilateral_filter(sensor_point_cloud, bfilter_config, sensor_point_cloud);
+    if (bfilter_config.filterOn)
+    {
+        this->bilateral_filter(sensor_point_cloud, bfilter_config, sensor_point_cloud);
+        #ifdef DEBUG_PRINTS
+        std::cout<<"[PITUKI] Finished Bilateral Filter\n";
+        #endif
+    }
 
-    //#ifdef DEBUG_PRINTS
-    //std::cout<<"[PITUKI] Finished Bilateral Filter\n";
-    //#endif
+    /** Remove NaN **/
+    std::vector<int> indices; 
+    PCLPointCloudPtr unorganized_point_cloud(new PCLPointCloud);
+    pcl::removeNaNFromPointCloud(*sensor_point_cloud, *unorganized_point_cloud, indices); 
 
-    /** Compute surface normals **/
-    //const float normal_radius = 0.1;
-    pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
-    //this->compute_surface_normals (sensor_point_cloud, normal_radius, normals);
+    /** Accumulate the cloud points **/
+    *merge_point_cloud += *unorganized_point_cloud;
 
-    //#ifdef DEBUG_PRINTS
-    //std::cout<<"[PITUKI] Computed Surface normals\n";
-    //#endif
-
-    /** Integrate the point cloud into the tsdf Volume **/
-    this->tsdf->integrateCloud(*sensor_point_cloud, *normals, tf);
+    /** Downsample the point cloud **/
+    //this->downsample(merge_point_cloud, _downsample_size.value(), merge_point_cloud);
+    #ifdef DEBUG_PRINTS
+    std::cout<<"[PITUKI] Finished Downsample\n";
+    std::cout<<"merge_point_cloud->width: "<< merge_point_cloud->width<<"\n";
+    std::cout<<"merge_point_cloud->height: "<< merge_point_cloud->height<<"\n";
+    std::cout<<"merge_point_cloud->size: "<< merge_point_cloud->size()<<"\n";
+    #endif
 
     /** Write the point cloud into the port **/
-    //::base::samples::Pointcloud point_cloud_out;
-    //this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
-    //std::cout<< "[PITUKI] Base PointCloud size: "<<point_cloud_out.points.size()<<"\n";
-    //point_cloud_out.time = point_cloud_samples_sample.time;
-    //_point_cloud_samples_out.write(point_cloud_out);
-
+    ::base::samples::Pointcloud point_cloud_out;
+    this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
+    std::cout<< "[PITUKI] Base PointCloud size: "<<point_cloud_out.points.size()<<"\n";
+    point_cloud_out.time = point_cloud_samples_sample.time;
+    _point_cloud_samples_out.write(point_cloud_out);
 }
 
 /// The following lines are template definitions for the various state machine
@@ -144,15 +142,7 @@ void Task::stopHook()
 {
     TaskBase::stopHook();
 
-    cpu_tsdf::MarchingCubesTSDFOctree mc;
-    mc.setMinWeight (this->tsdf_config.mesh_min_weight);
-    mc.setInputTSDF (this->tsdf);
-    mc.setColorByRGB(this->tsdf_config.integrate_color);
-
-    pcl::PolygonMesh::Ptr mesh (new pcl::PolygonMesh);
-    mc.reconstruct (*mesh);
-
-    pcl::io::savePLYFileBinary (_output_ply.value(), *mesh);
+    pcl::io::savePLYFileBinary (_output_ply.value(), *merge_point_cloud.get());
 }
 
 void Task::cleanupHook()
