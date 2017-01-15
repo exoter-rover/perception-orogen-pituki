@@ -60,20 +60,22 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     std::cout<<"sensor_point_cloud->height: "<< sensor_point_cloud->height<<"\n";
     std::cout<<"sensor_point_cloud->size: "<< sensor_point_cloud->size()<<"\n";
 
-    /** Bilateral filter **/
-    if (bfilter_config.filterOn)
-    {
-        this->bilateral_filter(sensor_point_cloud, bfilter_config, sensor_point_cloud);
-        #ifdef DEBUG_PRINTS
-        std::cout<<"[PITUKI] Finished Bilateral Filter\n";
-        #endif
-    }
+    /** Outlier removal **/
+    this->outlierRemoval(sensor_point_cloud, this->outlierfilter_config, sensor_point_cloud);
 
-        /** Accumulate the cloud points **/
-    *merge_point_cloud += *sensor_point_cloud;
+    /** Bilateral filter **/
+    this->bilateral_filter(sensor_point_cloud, this->bfilter_config, sensor_point_cloud);
+
+    /** Remove NaN **/
+    std::vector<int> indices; 
+    PCLPointCloudPtr unorganized_point_cloud(new PCLPointCloud);
+    pcl::removeNaNFromPointCloud(*sensor_point_cloud, *unorganized_point_cloud, indices); 
+
+    /** Accumulate the cloud points **/
+    *merge_point_cloud += *unorganized_point_cloud;
 
     /** Downsample the point cloud **/
-    this->outlierRemoval(merge_point_cloud, this->outlierfilter_config, merge_point_cloud);
+    this->downsample(merge_point_cloud, _downsample_size.value(), merge_point_cloud);
     #ifdef DEBUG_PRINTS
     std::cout<<"[PITUKI] Finished Downsample\n";
     std::cout<<"merge_point_cloud->width: "<< merge_point_cloud->width<<"\n";
@@ -81,14 +83,9 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     std::cout<<"merge_point_cloud->size: "<< merge_point_cloud->size()<<"\n";
     #endif
 
-    /** Remove NaN **/
-    std::vector<int> indices; 
-    PCLPointCloudPtr unorganized_point_cloud(new PCLPointCloud);
-    pcl::removeNaNFromPointCloud(*merge_point_cloud, *unorganized_point_cloud, indices); 
-
     /** Write the point cloud into the port **/
     ::base::samples::Pointcloud point_cloud_out;
-    this->fromPCLPointCloud(point_cloud_out, *unorganized_point_cloud.get());
+    this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
     std::cout<< "[PITUKI] Base PointCloud size: "<<point_cloud_out.points.size()<<"\n";
     point_cloud_out.time = point_cloud_samples_sample.time;
     _point_cloud_samples_out.write(point_cloud_out);
@@ -139,10 +136,8 @@ void Task::errorHook()
 void Task::stopHook()
 {
     TaskBase::stopHook();
-    std::vector<int> indices; 
-    PCLPointCloudPtr unorganized_point_cloud(new PCLPointCloud);
-    pcl::removeNaNFromPointCloud(*merge_point_cloud, *unorganized_point_cloud, indices); 
-    pcl::io::savePLYFileBinary (_output_ply.value(), *unorganized_point_cloud.get());
+
+    pcl::io::savePLYFileBinary (_output_ply.value(), *merge_point_cloud.get());
 }
 
 void Task::cleanupHook()
@@ -318,11 +313,11 @@ void Task::transformPointCloud(pcl::PointCloud<PointType> &pcl_pc, const Eigen::
     }
 }
 
-void Task::downsample (PCLPointCloudPtr &points, float leaf_size, PCLPointCloudPtr &downsampled_out)
+void Task::downsample (PCLPointCloudPtr &points, const ::base::Vector3d &leaf_size, PCLPointCloudPtr &downsampled_out)
 {
 
   pcl::VoxelGrid<PointType> vox_grid;
-  vox_grid.setLeafSize (leaf_size, leaf_size, leaf_size);
+  vox_grid.setLeafSize (leaf_size[0], leaf_size[1], leaf_size[2]);
   vox_grid.setInputCloud (points);
   vox_grid.filter (*downsampled_out);
 
@@ -351,14 +346,20 @@ void Task::compute_surface_normals (PCLPointCloudPtr &points, float normal_radiu
 
 void Task::bilateral_filter(PCLPointCloudPtr &points, const pituki::BilateralFilterConfiguration &config, PCLPointCloudPtr &filtered_out)
 {
-    pcl::FastBilateralFilter<PointType> b_filter;
+    if (bfilter_config.filterOn)
+    {
+        pcl::FastBilateralFilter<PointType> b_filter;
 
-    /** Configure Bilateral filter **/
-    b_filter.setSigmaS(config.spatial_width);
-    b_filter.setSigmaR(config.range_sigma);
+        /** Configure Bilateral filter **/
+        b_filter.setSigmaS(config.spatial_width);
+        b_filter.setSigmaR(config.range_sigma);
 
-    b_filter.setInputCloud(points);
-    b_filter.filter(*filtered_out);
+        b_filter.setInputCloud(points);
+        b_filter.filter(*filtered_out);
+        #ifdef DEBUG_PRINTS
+        std::cout<<"[PITUKI] Finished Bilateral Filter\n";
+        #endif
+    }
 }
 
 void Task::outlierRemoval(PCLPointCloudPtr &points, const pituki::OutlierRemovalFilterConfiguration &config, PCLPointCloudPtr &outliersampled_out)

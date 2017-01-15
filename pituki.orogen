@@ -42,7 +42,7 @@ task_context "Task" do
     property('bfilter_config', 'pituki/BilateralFilterConfiguration').
         doc 'Configuration parameters for Bilateral filter.'
 
-    property('downsample_size', 'float').
+    property('downsample_size', 'base::Vector3d').
         doc 'Size for the downsample process of the point cloud'
 
     property('outlierfilter_config', 'pituki/OutlierRemovalFilterConfiguration').

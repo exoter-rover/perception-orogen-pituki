@@ -165,7 +165,7 @@ namespace pituki {
 
         void transformPointCloud(PCLPointCloud &pcl_pc, const Eigen::Affine3d& transformation);
 
-        void downsample(PCLPointCloudPtr &points, float leaf_size, PCLPointCloudPtr &downsampled_out);
+        void downsample(PCLPointCloudPtr &points, const ::base::Vector3d &leaf_size, PCLPointCloudPtr &downsampled_out);
 
         void compute_surface_normals (PCLPointCloudPtr &points, float normal_radius,  pcl::PointCloud<pcl::Normal>::Ptr &normals_out);
 
