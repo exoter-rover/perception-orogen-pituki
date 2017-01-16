@@ -62,6 +62,7 @@ namespace pituki {
         /***************************/
         /** Input port variables **/
         /***************************/
+        int idx;
         PCLPointCloudPtr sensor_point_cloud;
 
         /*******************************/
