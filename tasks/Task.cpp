@@ -60,44 +60,36 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     std::cout<<"sensor_point_cloud->height: "<< sensor_point_cloud->height<<"\n";
     std::cout<<"sensor_point_cloud->size: "<< sensor_point_cloud->size()<<"\n";
 
+    /** Outlier removal **/
+    this->outlierRemoval(sensor_point_cloud, this->outlierfilter_config, sensor_point_cloud);
+
+    /** Bilateral filter **/
+    this->bilateral_filter(sensor_point_cloud, this->bfilter_config, sensor_point_cloud);
+
+    /** Remove NaN **/
+    std::vector<int> indices;
+    PCLPointCloudPtr unorganized_point_cloud(new PCLPointCloud);
+    pcl::removeNaNFromPointCloud(*sensor_point_cloud, *unorganized_point_cloud, indices); 
+
     /** Accumulate the cloud points **/
-    *merge_point_cloud += *sensor_point_cloud;
+    *merge_point_cloud += *unorganized_point_cloud;
+
+    /** Downsample the point cloud **/
+    this->downsample(merge_point_cloud, _downsample_size.value(), merge_point_cloud);
+    #ifdef DEBUG_PRINTS
+    std::cout<<"[PITUKI] Finished Downsample\n";
+    std::cout<<"merge_point_cloud->width: "<< merge_point_cloud->width<<"\n";
+    std::cout<<"merge_point_cloud->height: "<< merge_point_cloud->height<<"\n";
     std::cout<<"merge_point_cloud->size: "<< merge_point_cloud->size()<<"\n";
+    #endif
 
-    /** Process the accumulated points **/
-    if (this->idx >= _number_accumulated_point_clouds.value())
-    {
-        /** Outlier removal **/
-        this->outlierRemoval(merge_point_cloud, this->outlierfilter_config, merge_point_cloud);
+    /** Write the point cloud into the port **/
+    ::base::samples::Pointcloud point_cloud_out;
+    this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
+    std::cout<< "[PITUKI] Base PointCloud size: "<<point_cloud_out.points.size()<<"\n";
+    point_cloud_out.time = point_cloud_samples_sample.time;
+    _point_cloud_samples_out.write(point_cloud_out);
 
-        /** Bilateral filter **/
-        this->bilateral_filter(merge_point_cloud, this->bfilter_config, merge_point_cloud);
-
-        /** Downsample the point cloud **/
-        this->downsample(merge_point_cloud, _downsample_size.value(), merge_point_cloud);
-        #ifdef DEBUG_PRINTS
-        std::cout<<"[PITUKI] Finished Downsample\n";
-        std::cout<<"merge_point_cloud->width: "<< merge_point_cloud->width<<"\n";
-        std::cout<<"merge_point_cloud->height: "<< merge_point_cloud->height<<"\n";
-        std::cout<<"merge_point_cloud->size: "<< merge_point_cloud->size()<<"\n";
-        #endif
-
-        /** Remove NaN **/
-        std::vector<int> indices;
-        PCLPointCloudPtr unorganized_point_cloud(new PCLPointCloud);
-        pcl::removeNaNFromPointCloud(*merge_point_cloud, *unorganized_point_cloud, indices); 
-
-        /** Write the point cloud into the port **/
-        ::base::samples::Pointcloud point_cloud_out;
-        this->fromPCLPointCloud(point_cloud_out, *unorganized_point_cloud.get());
-        std::cout<< "[PITUKI] Base PointCloud size: "<<point_cloud_out.points.size()<<"\n";
-        point_cloud_out.time = point_cloud_samples_sample.time;
-        _point_cloud_samples_out.write(point_cloud_out);
-
-        this->idx = 0;
-    }
-
-    this->idx++;
 }
 
 /// The following lines are template definitions for the various state machine
@@ -148,12 +140,7 @@ void Task::stopHook()
 {
     TaskBase::stopHook();
 
-    /** Remove NaN **/
-    std::vector<int> indices;
-    PCLPointCloudPtr unorganized_point_cloud(new PCLPointCloud);
-    pcl::removeNaNFromPointCloud(*merge_point_cloud, *unorganized_point_cloud, indices); 
-
-    pcl::io::savePLYFileBinary (_output_ply.value(), *unorganized_point_cloud.get());
+    pcl::io::savePLYFileBinary (_output_ply.value(), *merge_point_cloud.get());
 }
 
 void Task::cleanupHook()
