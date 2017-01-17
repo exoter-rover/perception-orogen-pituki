@@ -11,11 +11,14 @@ using_library "pcl_features-1.7"
 using_library "pcl_keypoints-1.7"
 using_library "pcl_io-1.7"
 using_library "flann"
-using_library "cpu_tsdf"
+using_library "maps"
 
 # If this project uses data types that are defined in other oroGen projects,
 # these projects should be imported there as well.
 import_types_from "base"
+import_types_from "envire_pcl"
+import_types_from "pcl"
+import_types_from "envire_maps"
 import_types_from "pitukiTypes.hpp"
 
 # Declare a new task context (i.e., a component)
@@ -51,6 +54,12 @@ task_context "Task" do
     property('tsdf_config', 'pituki/TSDFConfiguration').
         doc 'Configuration parameters for TSDF.'
 
+    property('number_cells', 'base::Vector2d').
+        doc 'Number cells for the map'
+
+    property('resolution', 'base::Vector3d').
+        doc 'Resolution for the map'
+
     #******************************
     #******* Input ports  *********
     #******************************
@@ -69,9 +78,11 @@ task_context "Task" do
     #******************************
     #******* Output Ports *********
     #******************************
-    output_port('point_cloud_samples_out', 'base/samples/Pointcloud').
-        doc 'Output point cloud.'
+    output_port('point_cloud_samples_out', '/envire/core/SpatioTemporal<pcl/PCLPointCloud2>').
+        doc 'Point cloud samples out.'
 
+    output_port('occupancy_map_out', '/maps/grid/OccupancyGridMap').
+        doc 'Occupancy grid map.'
     port_driven
 end
 

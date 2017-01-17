@@ -45,7 +45,7 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     /** Transform the point cloud in navigation frame **/
     ::base::samples::Pointcloud point_cloud_in;
     point_cloud_in.time = point_cloud_samples_sample.time;
-    point_cloud_in.colors = point_cloud_samples_sample.colors;
+    //point_cloud_in.colors = point_cloud_samples_sample.colors;
     for (std::vector<base::Point>::const_iterator it = point_cloud_samples_sample.points.begin();
         it != point_cloud_samples_sample.points.end(); it++)
     {
@@ -60,36 +60,43 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     std::cout<<"sensor_point_cloud->height: "<< sensor_point_cloud->height<<"\n";
     std::cout<<"sensor_point_cloud->size: "<< sensor_point_cloud->size()<<"\n";
 
+    /** Sensor origin **/
+    sensor_point_cloud->sensor_origin_ = Eigen::Vector4f::Zero();
+    sensor_point_cloud->sensor_orientation_ = Eigen::Quaternionf::Identity();
+
+    /** Merge the point cloud **/
+    this->tsdf_map->mergePointCloud(*sensor_point_cloud.get(), base::Transform3d::Identity());
+
     /** Outlier removal **/
-    this->outlierRemoval(sensor_point_cloud, this->outlierfilter_config, sensor_point_cloud);
+    //this->outlierRemoval(sensor_point_cloud, this->outlierfilter_config, sensor_point_cloud);
 
     /** Bilateral filter **/
-    this->bilateral_filter(sensor_point_cloud, this->bfilter_config, sensor_point_cloud);
+    //this->bilateral_filter(sensor_point_cloud, this->bfilter_config, sensor_point_cloud);
 
     /** Remove NaN **/
-    std::vector<int> indices;
-    PCLPointCloudPtr unorganized_point_cloud(new PCLPointCloud);
-    pcl::removeNaNFromPointCloud(*sensor_point_cloud, *unorganized_point_cloud, indices); 
+    //std::vector<int> indices;
+    //PCLPointCloudPtr unorganized_point_cloud(new PCLPointCloud);
+    //pcl::removeNaNFromPointCloud(*sensor_point_cloud, *unorganized_point_cloud, indices);
 
     /** Accumulate the cloud points **/
-    *merge_point_cloud += *unorganized_point_cloud;
+    //*merge_point_cloud += *unorganized_point_cloud;
 
     /** Downsample the point cloud **/
-    this->downsample(merge_point_cloud, _downsample_size.value(), merge_point_cloud);
-    #ifdef DEBUG_PRINTS
-    std::cout<<"[PITUKI] Finished Downsample\n";
-    std::cout<<"merge_point_cloud->width: "<< merge_point_cloud->width<<"\n";
-    std::cout<<"merge_point_cloud->height: "<< merge_point_cloud->height<<"\n";
-    std::cout<<"merge_point_cloud->size: "<< merge_point_cloud->size()<<"\n";
-    #endif
+    //this->downsample(merge_point_cloud, _downsample_size.value(), merge_point_cloud);
+    //#ifdef DEBUG_PRINTS
+    //std::cout<<"[PITUKI] Finished Downsample\n";
+    //std::cout<<"merge_point_cloud->width: "<< merge_point_cloud->width<<"\n";
+    //std::cout<<"merge_point_cloud->height: "<< merge_point_cloud->height<<"\n";
+    //std::cout<<"merge_point_cloud->size: "<< merge_point_cloud->size()<<"\n";
+    //#endif
 
     /** Write the point cloud into the port **/
-    ::base::samples::Pointcloud point_cloud_out;
-    this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
-    std::cout<< "[PITUKI] Base PointCloud size: "<<point_cloud_out.points.size()<<"\n";
-    point_cloud_out.time = point_cloud_samples_sample.time;
-    _point_cloud_samples_out.write(point_cloud_out);
+    //::envire::core::SpatioTemporal<pcl::PCLPointCloud2> point_cloud_out;
+    //pcl::toPCLPointCloud2(*merge_point_cloud.get(), point_cloud_out.data);
+    //point_cloud_out.time = point_cloud_samples_sample.time;
+    //_point_cloud_samples_out.write(point_cloud_out);
 
+    _occupancy_map_out.write(*(this->tsdf_map.get()));
 }
 
 /// The following lines are template definitions for the various state machine
@@ -105,20 +112,15 @@ bool Task::configureHook()
 
     this->bfilter_config = _bfilter_config.get();
     this->outlierfilter_config = _outlierfilter_config.get();
-    this->tsdf_config = _tsdf_config.get();
 
-    /** Create the TSDF object **/
-    this->tsdf.reset(new  cpu_tsdf::TSDFVolumeOctree);
-    this->tsdf->setGridSize(this->tsdf_config.size[0],
-                        this->tsdf_config.size[1], this->tsdf_config.size[2]);
+    ::maps::grid::OccupancyConfiguration config;
+    this->tsdf_map.reset(new ::maps::grid::OccupancyGridMap( ::maps::grid::Vector2ui(_number_cells.value().cast<unsigned int>()), _resolution.value(), config));
 
-    this->tsdf->setResolution(this->tsdf_config.resolution[0], this->tsdf_config.resolution[2],
-                        this->tsdf_config.resolution[2]);
+    std::cout<<"tsdf map size: "<< this->tsdf_map->getSize()<<"\n";
+    std::cout<<"tsdf map resolution: "<< this->tsdf_map->getResolution()<<"\n";
 
-    this->tsdf->setIntegrateColor(this->tsdf_config.integrate_color);
-    Eigen::Affine3d tsdf_center; // Optionally offset the center
-    this->tsdf->setGlobalTransform (tsdf_center);
-    this->tsdf->reset (); // Initialize it to be empty
+    /** Translate the local frame (offset) **/
+    //this->tsdf_map->getLocalFrame().translation() << 0.5*this->tsdf_map->getSize(), 0;
 
     return true;
 }
@@ -139,8 +141,11 @@ void Task::errorHook()
 void Task::stopHook()
 {
     TaskBase::stopHook();
-
-    pcl::io::savePLYFileBinary (_output_ply.value(), *merge_point_cloud.get());
+    //::maps::tools::TSDFPolygonMeshReconstruction mc;
+    //mc.setTSDFMap(this->tsdf_map);
+    //pcl::PolygonMesh mesh;
+    //mc.reconstruct(mesh);
+    //pcl::io::savePLYFileBinary (_output_ply.value(), mesh);
 }
 
 void Task::cleanupHook()
@@ -171,13 +176,13 @@ void Task::writePlyFile( const base::samples::Pointcloud& points, const std::str
 
     for( size_t i = 0; i < points.points.size(); i++ )
     {
-	data 
+	data
 	    << points.points[i].x() << " "
 	    << points.points[i].y() << " "
 	    << points.points[i].z() << " ";
 	if( !points.colors.empty() )
 	{
-	    data 
+	    data
 		<< (int)(points.colors[i].x()*255) << " "
 		<< (int)(points.colors[i].y()*255) << " "
 		<< (int)(points.colors[i].z()*255) << " "
@@ -226,9 +231,9 @@ void Task::toPCLPointCloud(const ::base::samples::Pointcloud & pc, pcl::PointClo
             pcl_point.x = pc.points[i].x();
             pcl_point.y = pc.points[i].y();
             pcl_point.z = pc.points[i].z();
-            uint8_t r = pc.colors[i].x()*255.00, g = pc.colors[i].y()*255.00, b = pc.colors[i].z()*255.00;
-            uint32_t rgb = ((uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b);
-            pcl_point.rgb = *reinterpret_cast<float*>(&rgb);
+            //uint8_t r = pc.colors[i].x()*255.00, g = pc.colors[i].y()*255.00, b = pc.colors[i].z()*255.00;
+            //uint32_t rgb = ((uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)b);
+            //pcl_point.rgb = *reinterpret_cast<float*>(&rgb);
 
             /** Point info **/
             pcl_pc.push_back(pcl_point);
@@ -278,11 +283,11 @@ void Task::fromPCLPointCloud(::base::samples::Pointcloud & pc, const pcl::PointC
             pc.points.push_back(::base::Point(pcl_point.x, pcl_point.y, pcl_point.z));
 
             /** Color **/
-            uint32_t rgb = *reinterpret_cast<const int*>(&pcl_point.rgb);
-            uint8_t r = (rgb >> 16) & 0x0000ff;
-            uint8_t g = (rgb >> 8)  & 0x0000ff;
-            uint8_t b = (rgb)       & 0x0000ff;
-            pc.colors.push_back(::base::Vector4d(r, g, b, 255.0)/255.00);
+            //uint32_t rgb = *reinterpret_cast<const int*>(&pcl_point.rgb);
+            //uint8_t r = (rgb >> 16) & 0x0000ff;
+            //uint8_t g = (rgb >> 8)  & 0x0000ff;
+            //uint8_t b = (rgb)       & 0x0000ff;
+            //pc.colors.push_back(::base::Vector4d(r, g, b, 255.0)/255.00);
         }
     }
 }
@@ -402,113 +407,113 @@ void Task::outlierRemoval(PCLPointCloudPtr &points, const pituki::OutlierRemoval
     return;
 }
 
-void Task::compute_PFH_features (PCLPointCloud::Ptr &points,
-                      pcl::PointCloud<pcl::Normal>::Ptr &normals,
-                      float feature_radius,
-                      pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out)
-{
-    // Create a PFHEstimation object
-    pcl::PFHEstimation<PointType, pcl::Normal, pcl::PFHSignature125> pfh_est;
-
-    // Set it to use a FLANN-based KdTree to perform its neighborhood searches
-    pfh_est.setSearchMethod (pcl::search::KdTree<PointType>::Ptr (new pcl::search::KdTree<PointType>));
-
-    // Specify the radius of the PFH feature
-    pfh_est.setRadiusSearch (feature_radius);
-
-    // Set the input points and surface normals
-    pfh_est.setInputCloud (points);
-    pfh_est.setInputNormals (normals);
-
-    // Compute the features
-    pfh_est.compute (*descriptors_out);
-
-    return;
-}
-
-void Task::detect_keypoints (PCLPointCloud::Ptr &points,
-          float min_scale, int nr_octaves, int nr_scales_per_octave, float min_contrast,
-          pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints_out)
-{
-    pcl::SIFTKeypoint<PointType, pcl::PointWithScale> sift_detect;
-
-    // Use a FLANN-based KdTree to perform neighborhood searches
-    sift_detect.setSearchMethod (pcl::search::KdTree<PointType>::Ptr (new pcl::search::KdTree<PointType>));
-
-    // Set the detection parameters
-    sift_detect.setScales (min_scale, nr_octaves, nr_scales_per_octave);
-    sift_detect.setMinimumContrast (min_contrast);
-
-    // Set the input
-    sift_detect.setInputCloud (points);
-
-    // Detect the keypoints and store them in "keypoints_out"
-    sift_detect.compute (*keypoints_out);
-
-    return;
-}
-
-void Task::compute_PFH_features_at_keypoints (PCLPointCloud::Ptr &points,
-                           pcl::PointCloud<pcl::Normal>::Ptr &normals,
-                           pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints, float feature_radius,
-                           pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out)
-{
-    // Create a PFHEstimation object
-    pcl::PFHEstimation<PointType, pcl::Normal, pcl::PFHSignature125> pfh_est;
-
-    // Set it to use a FLANN-based KdTree to perform its neighborhood searches
-    pfh_est.setSearchMethod (pcl::search::KdTree<PointType>::Ptr (new pcl::search::KdTree<PointType>));
-
-    // Specify the radius of the PFH feature
-    pfh_est.setRadiusSearch (feature_radius);
-
-    /* This is a little bit messy: since our keypoint detection returns PointWithScale points, but we want to
-    * use them as an input to our PFH estimation, which expects clouds of PointXYZRGBA points.  To get around this,
-    * we'll use copyPointCloud to convert "keypoints" (a cloud of type PointCloud<PointWithScale>) to
-    * "keypoints_xyzrgb" (a cloud of type PointCloud<PointXYZRGBA>).  Note that the original cloud doesn't have any RGB
-    * values, so when we copy from PointWithScale to PointXYZRGBA, the new r,g,b fields will all be zero.
-    */
-
-    PCLPointCloudPtr keypoints_xyzrgb (new pcl::PointCloud<PointType>);
-    pcl::copyPointCloud (*keypoints, *keypoints_xyzrgb);
-
-    // Use all of the points for analyzing the local structure of the cloud
-    pfh_est.setSearchSurface (points);
-    pfh_est.setInputNormals (normals);
-
-    // But only compute features at the keypoints
-    pfh_est.setInputCloud (keypoints_xyzrgb);
-
-    // Compute the features
-    pfh_est.compute (*descriptors_out);
-
-    return;
-}
-
-void Task::find_feature_correspondences (pcl::PointCloud<pcl::PFHSignature125>::Ptr &source_descriptors,
-                      pcl::PointCloud<pcl::PFHSignature125>::Ptr &target_descriptors,
-                      std::vector<int> &correspondences_out, std::vector<float> &correspondence_scores_out)
-{
-
-    // Resize the output vector
-    correspondences_out.resize (source_descriptors->size ());
-    correspondence_scores_out.resize (source_descriptors->size ());
-
-    // Use a KdTree to search for the nearest matches in feature space
-    pcl::search::KdTree<pcl::PFHSignature125> descriptor_kdtree;
-    descriptor_kdtree.setInputCloud (target_descriptors);
-
-    // Find the index of the best match for each keypoint, and store it in "correspondences_out"
-    const int k = 1;
-    std::vector<int> k_indices (k);
-    std::vector<float> k_squared_distances (k);
-    for (size_t i = 0; i < source_descriptors->size (); ++i)
-    {
-        descriptor_kdtree.nearestKSearch (*source_descriptors, i, k, k_indices, k_squared_distances);
-        correspondences_out[i] = k_indices[0];
-        correspondence_scores_out[i] = k_squared_distances[0];
-    }
-
-    return;
-}
+//void Task::compute_PFH_features (PCLPointCloud::Ptr &points,
+//                      pcl::PointCloud<pcl::Normal>::Ptr &normals,
+//                      float feature_radius,
+//                      pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out)
+//{
+//    // Create a PFHEstimation object
+//    pcl::PFHEstimation<PointType, pcl::Normal, pcl::PFHSignature125> pfh_est;
+//
+//    // Set it to use a FLANN-based KdTree to perform its neighborhood searches
+//    pfh_est.setSearchMethod (pcl::search::KdTree<PointType>::Ptr (new pcl::search::KdTree<PointType>));
+//
+//    // Specify the radius of the PFH feature
+//    pfh_est.setRadiusSearch (feature_radius);
+//
+//    // Set the input points and surface normals
+//    pfh_est.setInputCloud (points);
+//    pfh_est.setInputNormals (normals);
+//
+//    // Compute the features
+//    pfh_est.compute (*descriptors_out);
+//
+//    return;
+//}
+//
+//void Task::detect_keypoints (PCLPointCloud::Ptr &points,
+//          float min_scale, int nr_octaves, int nr_scales_per_octave, float min_contrast,
+//          pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints_out)
+//{
+//    pcl::SIFTKeypoint<PointType, pcl::PointWithScale> sift_detect;
+//
+//    // Use a FLANN-based KdTree to perform neighborhood searches
+//    sift_detect.setSearchMethod (pcl::search::KdTree<PointType>::Ptr (new pcl::search::KdTree<PointType>));
+//
+//    // Set the detection parameters
+//    sift_detect.setScales (min_scale, nr_octaves, nr_scales_per_octave);
+//    sift_detect.setMinimumContrast (min_contrast);
+//
+//    // Set the input
+//    sift_detect.setInputCloud (points);
+//
+//    // Detect the keypoints and store them in "keypoints_out"
+//    sift_detect.compute (*keypoints_out);
+//
+//    return;
+//}
+//
+//void Task::compute_PFH_features_at_keypoints (PCLPointCloud::Ptr &points,
+//                           pcl::PointCloud<pcl::Normal>::Ptr &normals,
+//                           pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints, float feature_radius,
+//                           pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out)
+//{
+//    // Create a PFHEstimation object
+//    pcl::PFHEstimation<PointType, pcl::Normal, pcl::PFHSignature125> pfh_est;
+//
+//    // Set it to use a FLANN-based KdTree to perform its neighborhood searches
+//    pfh_est.setSearchMethod (pcl::search::KdTree<PointType>::Ptr (new pcl::search::KdTree<PointType>));
+//
+//    // Specify the radius of the PFH feature
+//    pfh_est.setRadiusSearch (feature_radius);
+//
+//    /* This is a little bit messy: since our keypoint detection returns PointWithScale points, but we want to
+//    * use them as an input to our PFH estimation, which expects clouds of PointXYZRGBA points.  To get around this,
+//    * we'll use copyPointCloud to convert "keypoints" (a cloud of type PointCloud<PointWithScale>) to
+//    * "keypoints_xyzrgb" (a cloud of type PointCloud<PointXYZRGBA>).  Note that the original cloud doesn't have any RGB
+//    * values, so when we copy from PointWithScale to PointXYZRGBA, the new r,g,b fields will all be zero.
+//    */
+//
+//    PCLPointCloudPtr keypoints_xyzrgb (new pcl::PointCloud<PointType>);
+//    pcl::copyPointCloud (*keypoints, *keypoints_xyzrgb);
+//
+//    // Use all of the points for analyzing the local structure of the cloud
+//    pfh_est.setSearchSurface (points);
+//    pfh_est.setInputNormals (normals);
+//
+//    // But only compute features at the keypoints
+//    pfh_est.setInputCloud (keypoints_xyzrgb);
+//
+//    // Compute the features
+//    pfh_est.compute (*descriptors_out);
+//
+//    return;
+//}
+//
+//void Task::find_feature_correspondences (pcl::PointCloud<pcl::PFHSignature125>::Ptr &source_descriptors,
+//                      pcl::PointCloud<pcl::PFHSignature125>::Ptr &target_descriptors,
+//                      std::vector<int> &correspondences_out, std::vector<float> &correspondence_scores_out)
+//{
+//
+//    // Resize the output vector
+//    correspondences_out.resize (source_descriptors->size ());
+//    correspondence_scores_out.resize (source_descriptors->size ());
+//
+//    // Use a KdTree to search for the nearest matches in feature space
+//    pcl::search::KdTree<pcl::PFHSignature125> descriptor_kdtree;
+//    descriptor_kdtree.setInputCloud (target_descriptors);
+//
+//    // Find the index of the best match for each keypoint, and store it in "correspondences_out"
+//    const int k = 1;
+//    std::vector<int> k_indices (k);
+//    std::vector<float> k_squared_distances (k);
+//    for (size_t i = 0; i < source_descriptors->size (); ++i)
+//    {
+//        descriptor_kdtree.nearestKSearch (*source_descriptors, i, k, k_indices, k_squared_distances);
+//        correspondences_out[i] = k_indices[0];
+//        correspondence_scores_out[i] = k_squared_distances[0];
+//    }
+//
+//    return;
+//}
 

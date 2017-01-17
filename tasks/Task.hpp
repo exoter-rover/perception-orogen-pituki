@@ -16,16 +16,21 @@
 #include <pcl/keypoints/sift_keypoint.h>
 #include <pcl/io/ply_io.h>
 
+/* Envire **/
+#include <envire_core/items/Item.hpp>
 
-/** CPU TSDF **/
-#include <cpu_tsdf/tsdf_volume_octree.h>
-#include <cpu_tsdf/marching_cubes_tsdf_octree.h>
+/** SLAM MAPS **/
+#include <maps/grid/TSDFVolumetricMap.hpp>
+#include <maps/grid/OccupancyGridMap.hpp>
+#include <maps/tools/TSDFPolygonMeshReconstruction.hpp>
+
+#include <memory>
 
 #include "pituki/TaskBase.hpp"
 
 namespace pituki {
 
-    typedef pcl::PointXYZRGB PointType;
+    typedef pcl::PointXYZ PointType;
 
     typedef pcl::PointCloud<PointType> PCLPointCloud;
     typedef typename PCLPointCloud::Ptr PCLPointCloudPtr;
@@ -57,7 +62,6 @@ namespace pituki {
         /**************************/
         pituki::BilateralFilterConfiguration bfilter_config; /** Bilateral filter Configuration **/
         pituki::OutlierRemovalFilterConfiguration outlierfilter_config; /** Outlier Filter Removal Configuration **/
-        pituki::TSDFConfiguration tsdf_config; /** TSDF Configuration **/
 
         /***************************/
         /** Input port variables **/
@@ -69,9 +73,8 @@ namespace pituki {
         /** General Purpose variables **/
         /*******************************/
         PCLPointCloudPtr merge_point_cloud;
-
-        /** TSDF Volume **/
-        cpu_tsdf::TSDFVolumeOctree::Ptr tsdf;
+        //::maps::grid::TSDFVolumetricMap::Ptr tsdf_map;
+        std::shared_ptr<::maps::grid::OccupancyGridMap> tsdf_map;
 
     protected:
         virtual void point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample);
@@ -174,23 +177,23 @@ namespace pituki {
 
         void outlierRemoval(PCLPointCloudPtr &points, const pituki::OutlierRemovalFilterConfiguration &config, PCLPointCloudPtr &outliersampled_out);
 
-        void compute_PFH_features(PCLPointCloud::Ptr &points,
-                      pcl::PointCloud<pcl::Normal>::Ptr &normals,
-                      float feature_radius,
-                      pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out);
-
-        void detect_keypoints(PCLPointCloud::Ptr &points,
-                  float min_scale, int nr_octaves, int nr_scales_per_octave, float min_contrast,
-                  pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints_out);
-
-        void compute_PFH_features_at_keypoints(PCLPointCloud::Ptr &points,
-                                   pcl::PointCloud<pcl::Normal>::Ptr &normals,
-                                   pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints, float feature_radius,
-                                   pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out);
-
-        void find_feature_correspondences(pcl::PointCloud<pcl::PFHSignature125>::Ptr &source_descriptors,
-                              pcl::PointCloud<pcl::PFHSignature125>::Ptr &target_descriptors,
-                              std::vector<int> &correspondences_out, std::vector<float> &correspondence_scores_out);
+//        void compute_PFH_features(PCLPointCloud::Ptr &points,
+//                      pcl::PointCloud<pcl::Normal>::Ptr &normals,
+//                      float feature_radius,
+//                      pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out);
+//
+//        void detect_keypoints(PCLPointCloud::Ptr &points,
+//                  float min_scale, int nr_octaves, int nr_scales_per_octave, float min_contrast,
+//                  pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints_out);
+//
+//        void compute_PFH_features_at_keypoints(PCLPointCloud::Ptr &points,
+//                                   pcl::PointCloud<pcl::Normal>::Ptr &normals,
+//                                   pcl::PointCloud<pcl::PointWithScale>::Ptr &keypoints, float feature_radius,
+//                                   pcl::PointCloud<pcl::PFHSignature125>::Ptr &descriptors_out);
+//
+//        void find_feature_correspondences(pcl::PointCloud<pcl::PFHSignature125>::Ptr &source_descriptors,
+//                              pcl::PointCloud<pcl::PFHSignature125>::Ptr &target_descriptors,
+//                              std::vector<int> &correspondences_out, std::vector<float> &correspondence_scores_out);
 
     };
 }
