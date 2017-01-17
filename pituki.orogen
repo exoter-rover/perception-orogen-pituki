@@ -18,7 +18,6 @@ using_library "maps"
 import_types_from "base"
 import_types_from "envire_pcl"
 import_types_from "pcl"
-import_types_from "envire_maps"
 import_types_from "pitukiTypes.hpp"
 
 # Declare a new task context (i.e., a component)
@@ -81,8 +80,6 @@ task_context "Task" do
     output_port('point_cloud_samples_out', '/envire/core/SpatioTemporal<pcl/PCLPointCloud2>').
         doc 'Point cloud samples out.'
 
-    output_port('occupancy_map_out', '/maps/grid/OccupancyGridMap').
-        doc 'Occupancy grid map.'
     port_driven
 end
 
