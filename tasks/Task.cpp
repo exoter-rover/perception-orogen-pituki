@@ -60,6 +60,10 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     std::cout<<"sensor_point_cloud->height: "<< sensor_point_cloud->height<<"\n";
     std::cout<<"sensor_point_cloud->size: "<< sensor_point_cloud->size()<<"\n";
 
+    /** Sensor origin **/
+    sensor_point_cloud->sensor_origin_ = Eigen::Vector4f::Zero();
+    sensor_point_cloud->sensor_orientation_ = Eigen::Quaternionf::Identity();
+
     /** Outlier removal **/
     this->outlierRemoval(sensor_point_cloud, this->outlierfilter_config, sensor_point_cloud);
 
@@ -84,9 +88,8 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     #endif
 
     /** Write the point cloud into the port **/
-    ::base::samples::Pointcloud point_cloud_out;
-    this->fromPCLPointCloud(point_cloud_out, *merge_point_cloud.get());
-    std::cout<< "[PITUKI] Base PointCloud size: "<<point_cloud_out.points.size()<<"\n";
+    ::envire::core::SpatioTemporal<pcl::PCLPointCloud2> point_cloud_out;
+    pcl::toPCLPointCloud2(*merge_point_cloud.get(), point_cloud_out.data);
     point_cloud_out.time = point_cloud_samples_sample.time;
     _point_cloud_samples_out.write(point_cloud_out);
 
@@ -106,19 +109,6 @@ bool Task::configureHook()
     this->bfilter_config = _bfilter_config.get();
     this->outlierfilter_config = _outlierfilter_config.get();
     this->tsdf_config = _tsdf_config.get();
-
-    /** Create the TSDF object **/
-    this->tsdf.reset(new  cpu_tsdf::TSDFVolumeOctree);
-    this->tsdf->setGridSize(this->tsdf_config.size[0],
-                        this->tsdf_config.size[1], this->tsdf_config.size[2]);
-
-    this->tsdf->setResolution(this->tsdf_config.resolution[0], this->tsdf_config.resolution[2],
-                        this->tsdf_config.resolution[2]);
-
-    this->tsdf->setIntegrateColor(this->tsdf_config.integrate_color);
-    Eigen::Affine3d tsdf_center; // Optionally offset the center
-    this->tsdf->setGlobalTransform (tsdf_center);
-    this->tsdf->reset (); // Initialize it to be empty
 
     return true;
 }

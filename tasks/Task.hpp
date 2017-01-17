@@ -16,11 +16,6 @@
 #include <pcl/keypoints/sift_keypoint.h>
 #include <pcl/io/ply_io.h>
 
-
-/** CPU TSDF **/
-#include <cpu_tsdf/tsdf_volume_octree.h>
-#include <cpu_tsdf/marching_cubes_tsdf_octree.h>
-
 #include "pituki/TaskBase.hpp"
 
 namespace pituki {
@@ -69,9 +64,6 @@ namespace pituki {
         /** General Purpose variables **/
         /*******************************/
         PCLPointCloudPtr merge_point_cloud;
-
-        /** TSDF Volume **/
-        cpu_tsdf::TSDFVolumeOctree::Ptr tsdf;
 
     protected:
         virtual void point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample);

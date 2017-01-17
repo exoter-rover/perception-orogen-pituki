@@ -11,7 +11,8 @@
   <depend package="base/types" />
   <depend package="base/orogen/types" />
   <depend package="drivers/orogen/transformer" />
-  <depend package="perception/cpu_tsdf" />
+  <depend package="envire/orogen/envire_pcl" />
   <depend package="vtk" />
+  <depend package="gui/vizkit3d_pcl" />
   <tags>stable</tags>
 </package>
