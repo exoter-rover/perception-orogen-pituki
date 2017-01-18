@@ -14,7 +14,10 @@
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/features/pfh.h>
 #include <pcl/keypoints/sift_keypoint.h>
+#include <pcl/filters/conditional_removal.h>
 #include <pcl/io/ply_io.h>
+
+#include <math.h>
 
 #include "pituki/TaskBase.hpp"
 
@@ -52,12 +55,11 @@ namespace pituki {
         /**************************/
         pituki::BilateralFilterConfiguration bfilter_config; /** Bilateral filter Configuration **/
         pituki::OutlierRemovalFilterConfiguration outlierfilter_config; /** Outlier Filter Removal Configuration **/
-        pituki::TSDFConfiguration tsdf_config; /** TSDF Configuration **/
 
         /***************************/
         /** Input port variables **/
         /***************************/
-        int idx;
+        int samples_count, idx;
         PCLPointCloudPtr sensor_point_cloud;
 
         /*******************************/
@@ -158,13 +160,15 @@ namespace pituki {
 
         void transformPointCloud(PCLPointCloud &pcl_pc, const Eigen::Affine3d& transformation);
 
-        void downsample(PCLPointCloudPtr &points, const ::base::Vector3d &leaf_size, PCLPointCloudPtr &downsampled_out);
+        void downsample(const PCLPointCloudPtr &points, const ::base::Vector3d &leaf_size, PCLPointCloudPtr &downsampled_out);
 
         void compute_surface_normals (PCLPointCloudPtr &points, float normal_radius,  pcl::PointCloud<pcl::Normal>::Ptr &normals_out);
 
-        void bilateral_filter(PCLPointCloudPtr &points, const pituki::BilateralFilterConfiguration &config, PCLPointCloudPtr &filtered_out);
+        void bilateral_filter(const PCLPointCloudPtr &points, const pituki::BilateralFilterConfiguration &config, PCLPointCloudPtr &filtered_out);
 
-        void outlierRemoval(PCLPointCloudPtr &points, const pituki::OutlierRemovalFilterConfiguration &config, PCLPointCloudPtr &outliersampled_out);
+        void outlierRemoval(const PCLPointCloudPtr &points, const pituki::OutlierRemovalFilterConfiguration &config, PCLPointCloudPtr &outliersampled_out);
+
+        void conditionalRemoval(const PCLPointCloudPtr &points,const pituki::ConditionalRemovalConfiguration &config, PCLPointCloudPtr &outliersampled_out);
 
         void compute_PFH_features(PCLPointCloud::Ptr &points,
                       pcl::PointCloud<pcl::Normal>::Ptr &normals,

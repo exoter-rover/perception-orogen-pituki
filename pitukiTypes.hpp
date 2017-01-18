@@ -21,7 +21,7 @@ namespace pituki {
 
     struct BilateralFilterConfiguration
     {
-        bool filterOn;
+        bool filter_on;
         float spatial_width; //size of the window bilateral filter
         float range_sigma; // the standard deviation of the Gaussian for the intensity difference
     };
@@ -46,8 +46,14 @@ namespace pituki {
         bool integrate_color;
 
         int mesh_min_weight;
+    };
 
-
+    struct ConditionalRemovalConfiguration
+    {
+        bool filter_on;
+        bool keep_organized;
+        base::Vector3d gt_boundary;
+        base::Vector3d lt_boundary;
     };
 }
 

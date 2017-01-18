@@ -42,57 +42,87 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
         return;
     }
 
-    /** Transform the point cloud in navigation frame **/
-    ::base::samples::Pointcloud point_cloud_in;
-    point_cloud_in.time = point_cloud_samples_sample.time;
-    point_cloud_in.colors = point_cloud_samples_sample.colors;
-    for (std::vector<base::Point>::const_iterator it = point_cloud_samples_sample.points.begin();
-        it != point_cloud_samples_sample.points.end(); it++)
+    if (this->idx >= this->samples_count)
     {
-        point_cloud_in.points.push_back(tf * (*it));
+        /** Reset counter **/
+        this->idx = 0;
+
+        /** Convert to pcl point clouds **/
+        this->toPCLPointCloud(point_cloud_samples_sample, *sensor_point_cloud.get());
+        sensor_point_cloud->height = static_cast<int>(_sensor_point_cloud_height.value());
+        sensor_point_cloud->width = static_cast<int>(_sensor_point_cloud_width.value());
+        std::cout<<"sensor_point_cloud->width: "<< sensor_point_cloud->width<<"\n";
+        std::cout<<"sensor_point_cloud->height: "<< sensor_point_cloud->height<<"\n";
+        std::cout<<"sensor_point_cloud->size: "<< sensor_point_cloud->size()<<"\n";
+
+        /** Temporal point cloud **/
+        PCLPointCloudPtr tmp_point_cloud;
+
+        /** Conditional Removal in sensor **/
+        if (_sensor_conditional_removal_config.value().filter_on)
+        {
+            tmp_point_cloud.reset(new PCLPointCloud(*sensor_point_cloud));
+            this->conditionalRemoval(tmp_point_cloud, _sensor_conditional_removal_config.value(), sensor_point_cloud);
+        }
+
+        /** Bilateral filter **/
+        if (this->bfilter_config.filter_on)
+        {
+            tmp_point_cloud.reset(new PCLPointCloud(*sensor_point_cloud));
+            this->bilateral_filter(tmp_point_cloud, this->bfilter_config, sensor_point_cloud);
+        }
+
+        /** Outlier removal **/
+        if (this->outlierfilter_config.type != NONE)
+        {
+            this->outlierRemoval(sensor_point_cloud, this->outlierfilter_config, sensor_point_cloud);
+        }
+
+        tmp_point_cloud.reset();
+        tmp_point_cloud = NULL;
+
+        /** Remove NaN **/
+        std::vector<int> indices;
+        PCLPointCloudPtr unorganized_point_cloud(new PCLPointCloud);
+        pcl::removeNaNFromPointCloud(*sensor_point_cloud, *unorganized_point_cloud, indices); 
+
+        /** Transform the point cloud in world frame **/
+        this->transformPointCloud(*unorganized_point_cloud, tf);
+
+        /** Conditional Removal in complete point cloud **/
+        if (_map_conditional_removal_config.value().filter_on)
+        {
+            this->conditionalRemoval(unorganized_point_cloud, _map_conditional_removal_config.value(), sensor_point_cloud);
+        }
+        else
+        {
+            *sensor_point_cloud = *unorganized_point_cloud;
+        }
+
+        /** Accumulate the cloud points **/
+        PCLPointCloudPtr combine_point_cloud;
+        combine_point_cloud.reset(new PCLPointCloud);
+        *combine_point_cloud = *merge_point_cloud + *sensor_point_cloud;
+
+        /** Downsample the point cloud **/
+        this->downsample(combine_point_cloud, _downsample_size.value(), merge_point_cloud);
+        #ifdef DEBUG_PRINTS
+        std::cout<<"[PITUKI] Finished Downsample\n";
+        std::cout<<"merge_point_cloud->width: "<< merge_point_cloud->width<<"\n";
+        std::cout<<"merge_point_cloud->height: "<< merge_point_cloud->height<<"\n";
+        std::cout<<"merge_point_cloud->size: "<< merge_point_cloud->size()<<"\n";
+        #endif
+        combine_point_cloud.reset();
+        combine_point_cloud = NULL;
+
+        /** Write the point cloud into the port **/
+        ::envire::core::SpatioTemporal<pcl::PCLPointCloud2> point_cloud_out;
+        pcl::toPCLPointCloud2(*merge_point_cloud.get(), point_cloud_out.data);
+        point_cloud_out.time = point_cloud_samples_sample.time;
+        _point_cloud_samples_out.write(point_cloud_out);
     }
 
-    /** Convert to pcl point clouds **/
-    this->toPCLPointCloud(point_cloud_in, *sensor_point_cloud.get());
-    sensor_point_cloud->height = static_cast<int>(_sensor_point_cloud_height.value());
-    sensor_point_cloud->width = static_cast<int>(_sensor_point_cloud_width.value());
-    std::cout<<"sensor_point_cloud->width: "<< sensor_point_cloud->width<<"\n";
-    std::cout<<"sensor_point_cloud->height: "<< sensor_point_cloud->height<<"\n";
-    std::cout<<"sensor_point_cloud->size: "<< sensor_point_cloud->size()<<"\n";
-
-    /** Sensor origin **/
-    sensor_point_cloud->sensor_origin_ = Eigen::Vector4f::Zero();
-    sensor_point_cloud->sensor_orientation_ = Eigen::Quaternionf::Identity();
-
-    /** Outlier removal **/
-    this->outlierRemoval(sensor_point_cloud, this->outlierfilter_config, sensor_point_cloud);
-
-    /** Bilateral filter **/
-    this->bilateral_filter(sensor_point_cloud, this->bfilter_config, sensor_point_cloud);
-
-    /** Remove NaN **/
-    std::vector<int> indices;
-    PCLPointCloudPtr unorganized_point_cloud(new PCLPointCloud);
-    pcl::removeNaNFromPointCloud(*sensor_point_cloud, *unorganized_point_cloud, indices); 
-
-    /** Accumulate the cloud points **/
-    *merge_point_cloud += *unorganized_point_cloud;
-
-    /** Downsample the point cloud **/
-    this->downsample(merge_point_cloud, _downsample_size.value(), merge_point_cloud);
-    #ifdef DEBUG_PRINTS
-    std::cout<<"[PITUKI] Finished Downsample\n";
-    std::cout<<"merge_point_cloud->width: "<< merge_point_cloud->width<<"\n";
-    std::cout<<"merge_point_cloud->height: "<< merge_point_cloud->height<<"\n";
-    std::cout<<"merge_point_cloud->size: "<< merge_point_cloud->size()<<"\n";
-    #endif
-
-    /** Write the point cloud into the port **/
-    ::envire::core::SpatioTemporal<pcl::PCLPointCloud2> point_cloud_out;
-    pcl::toPCLPointCloud2(*merge_point_cloud.get(), point_cloud_out.data);
-    point_cloud_out.time = point_cloud_samples_sample.time;
-    _point_cloud_samples_out.write(point_cloud_out);
-
+    this->idx++;
 }
 
 /// The following lines are template definitions for the various state machine
@@ -108,7 +138,15 @@ bool Task::configureHook()
 
     this->bfilter_config = _bfilter_config.get();
     this->outlierfilter_config = _outlierfilter_config.get();
-    this->tsdf_config = _tsdf_config.get();
+
+    if (_input_point_cloud_period.value() < _point_cloud_samples_period.value())
+    {
+        _input_point_cloud_period.value() = _point_cloud_samples_period.value();
+    }
+
+    this->samples_count = round(_input_point_cloud_period.value()/_point_cloud_samples_period.value());
+
+    std::cout<<"this->samples_count: "<<this->samples_count<<"\n";
 
     return true;
 }
@@ -302,11 +340,12 @@ void Task::transformPointCloud(pcl::PointCloud<PointType> &pcl_pc, const Eigen::
         point = transformation * point;
         PointType pcl_point;
         pcl_point.x = point[0]; pcl_point.y = point[1]; pcl_point.z = point[2];
+        pcl_point.rgb = it->rgb;
         *it = pcl_point;
     }
 }
 
-void Task::downsample (PCLPointCloudPtr &points, const ::base::Vector3d &leaf_size, PCLPointCloudPtr &downsampled_out)
+void Task::downsample (const PCLPointCloudPtr &points, const ::base::Vector3d &leaf_size, PCLPointCloudPtr &downsampled_out)
 {
 
   pcl::VoxelGrid<PointType> vox_grid;
@@ -337,25 +376,22 @@ void Task::compute_surface_normals (PCLPointCloudPtr &points, float normal_radiu
   norm_est.compute (*normals_out);
 }
 
-void Task::bilateral_filter(PCLPointCloudPtr &points, const pituki::BilateralFilterConfiguration &config, PCLPointCloudPtr &filtered_out)
+void Task::bilateral_filter(const PCLPointCloudPtr &points, const pituki::BilateralFilterConfiguration &config, PCLPointCloudPtr &filtered_out)
 {
-    if (bfilter_config.filterOn)
-    {
-        pcl::FastBilateralFilter<PointType> b_filter;
+    pcl::FastBilateralFilter<PointType> b_filter;
 
-        /** Configure Bilateral filter **/
-        b_filter.setSigmaS(config.spatial_width);
-        b_filter.setSigmaR(config.range_sigma);
+    /** Configure Bilateral filter **/
+    b_filter.setSigmaS(config.spatial_width);
+    b_filter.setSigmaR(config.range_sigma);
 
-        b_filter.setInputCloud(points);
-        b_filter.filter(*filtered_out);
-        #ifdef DEBUG_PRINTS
-        std::cout<<"[PITUKI] Finished Bilateral Filter\n";
-        #endif
-    }
+    b_filter.setInputCloud(points);
+    b_filter.filter(*filtered_out);
+    #ifdef DEBUG_PRINTS
+    std::cout<<"[PITUKI] Finished Bilateral Filter\n";
+    #endif
 }
 
-void Task::outlierRemoval(PCLPointCloudPtr &points, const pituki::OutlierRemovalFilterConfiguration &config, PCLPointCloudPtr &outliersampled_out)
+void Task::outlierRemoval(const PCLPointCloudPtr &points, const pituki::OutlierRemovalFilterConfiguration &config, PCLPointCloudPtr &outliersampled_out)
 {
     if (config.type == STATISTICAL)
     {
@@ -390,6 +426,38 @@ void Task::outlierRemoval(PCLPointCloudPtr &points, const pituki::OutlierRemoval
     }
 
     return;
+}
+
+void Task::conditionalRemoval(const PCLPointCloudPtr &points, const pituki::ConditionalRemovalConfiguration &config, PCLPointCloudPtr &outliersampled_out)
+{
+    /** Clean the out point cloud **/
+    outliersampled_out->clear();
+
+    /**  build the condition **/
+    pcl::ConditionAnd<PointType>::Ptr range_cond (new
+      pcl::ConditionAnd<PointType> ());
+
+    range_cond->addComparison (pcl::FieldComparison<PointType>::ConstPtr (new
+      pcl::FieldComparison<PointType> ("x", pcl::ComparisonOps::GT, config.gt_boundary[0])));
+    range_cond->addComparison (pcl::FieldComparison<PointType>::ConstPtr (new
+      pcl::FieldComparison<PointType> ("x", pcl::ComparisonOps::LT, config.lt_boundary[0])));
+
+    range_cond->addComparison (pcl::FieldComparison<PointType>::ConstPtr (new
+      pcl::FieldComparison<PointType> ("y", pcl::ComparisonOps::GT, config.gt_boundary[1])));
+    range_cond->addComparison (pcl::FieldComparison<PointType>::ConstPtr (new
+      pcl::FieldComparison<PointType> ("y", pcl::ComparisonOps::LT, config.lt_boundary[1])));
+
+    range_cond->addComparison (pcl::FieldComparison<PointType>::ConstPtr (new
+      pcl::FieldComparison<PointType> ("z", pcl::ComparisonOps::GT, config.gt_boundary[2])));
+    range_cond->addComparison (pcl::FieldComparison<PointType>::ConstPtr (new
+      pcl::FieldComparison<PointType> ("z", pcl::ComparisonOps::LT, config.lt_boundary[2])));
+
+    /** Apply the condition filter **/
+    pcl::ConditionalRemoval<PointType> condrem;
+    condrem.setCondition (range_cond);
+    condrem.setInputCloud (points);
+    condrem.setKeepOrganized(config.keep_organized);
+    condrem.filter (*outliersampled_out);
 }
 
 void Task::compute_PFH_features (PCLPointCloud::Ptr &points,

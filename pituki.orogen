@@ -48,8 +48,14 @@ task_context "Task" do
     property('outlierfilter_config', 'pituki/OutlierRemovalFilterConfiguration').
         doc 'Configuration parameters for Radius Outlier Removal filter.'
 
-    property('tsdf_config', 'pituki/TSDFConfiguration').
-        doc 'Configuration parameters for TSDF.'
+    property('sensor_conditional_removal_config', 'pituki/ConditionalRemovalConfiguration').
+        doc 'Configuration parameters for the conditional removal filter applied to sensor.'
+
+    property('input_point_cloud_period', 'float').
+        doc 'Desirable input point cloud period in seconds.'
+
+    property('map_conditional_removal_config', 'pituki/ConditionalRemovalConfiguration').
+        doc 'Configuration parameters for the conditional removal filter applied to map.'
 
     #******************************
     #******* Input ports  *********
