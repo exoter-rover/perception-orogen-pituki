@@ -60,6 +60,9 @@ task_context "Task" do
     #******************************
     #******* Input ports  *********
     #******************************
+    input_port('pose_samples', 'base/samples/RigidBodyState').
+        doc 'Transformation sensor in world. Alternative to transformer.'
+
     input_port('point_cloud_samples', 'base/samples/Pointcloud').
         doc 'Point cloud samples.'
 
@@ -68,6 +71,7 @@ task_context "Task" do
     #******************************
     transformer do
         transform "sensor", "world" # sensor in world in "Source in target" convention
+        align_port("pose_samples", 0.1)
         align_port("point_cloud_samples", 0.1)
         max_latency(0.2)
     end

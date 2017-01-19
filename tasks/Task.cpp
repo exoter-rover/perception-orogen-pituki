@@ -25,6 +25,11 @@ Task::~Task()
     merge_point_cloud.reset();
 }
 
+void Task::pose_samplesTransformerCallback(const base::Time &ts, const ::base::samples::RigidBodyState &pose_samples_sample)
+{
+    this->tf_pose_samples = pose_samples_sample.getTransform();
+    return;
+}
 
 void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample)
 {
@@ -36,7 +41,19 @@ void Task::point_cloud_samplesTransformerCallback(const base::Time &ts, const ::
     Eigen::Affine3d tf;
 
     /** Get the transformation (transformation) **/
-    if(!_sensor2world.get( ts, tf ))
+    if (_pose_samples.connected())
+    {
+        tf = this->tf_pose_samples;
+    }
+    else if ((_sensor_frame.value().compare(_world_frame.value()) == 0) && (!_pose_samples.connected()))
+    {
+        tf.setIdentity();
+    }
+    else if(!_sensor2world.get( ts, tf ) && (_pose_samples.connected()))
+    {
+        tf = tf * this->tf_pose_samples;
+    }
+    else if(!_sensor2world.get( ts, tf ) && (!_pose_samples.connected()))
     {
         RTT::log(RTT::Warning)<<"[PITUKI FATAL ERROR] No transformation provided for the transformer."<<RTT::endlog();
         return;
@@ -138,6 +155,8 @@ bool Task::configureHook()
 
     this->bfilter_config = _bfilter_config.get();
     this->outlierfilter_config = _outlierfilter_config.get();
+
+    this->tf_pose_samples.setIdentity();
 
     if (_input_point_cloud_period.value() < _point_cloud_samples_period.value())
     {

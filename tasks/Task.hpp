@@ -60,6 +60,7 @@ namespace pituki {
         /** Input port variables **/
         /***************************/
         int samples_count, idx;
+        Eigen::Affine3d tf_pose_samples;
         PCLPointCloudPtr sensor_point_cloud;
 
         /*******************************/
@@ -68,6 +69,8 @@ namespace pituki {
         PCLPointCloudPtr merge_point_cloud;
 
     protected:
+        virtual void pose_samplesTransformerCallback(const base::Time &ts, const ::base::samples::RigidBodyState &pose_samples_sample);
+
         virtual void point_cloud_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Pointcloud &point_cloud_samples_sample);
 
     public:
