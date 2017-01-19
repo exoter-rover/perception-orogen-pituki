@@ -57,6 +57,12 @@ task_context "Task" do
     property('map_conditional_removal_config', 'pituki/ConditionalRemovalConfiguration').
         doc 'Configuration parameters for the conditional removal filter applied to map.'
 
+    property('number_cells', 'base::Vector2d').
+        doc 'Number cells for the map'
+
+    property('resolution', 'base::Vector3d').
+        doc 'Resolution for the map'
+
     #******************************
     #******* Input ports  *********
     #******************************
